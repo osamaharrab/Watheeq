@@ -1,0 +1,11 @@
+{"holder_uid": "LE-007", "instrument_uid": "IN-001", "units": 420000, "valid_from": "2019-05-01", "valid_to": null}
+{"holder_uid": "NP-001", "instrument_uid": "IN-001", "units": 180000, "valid_from": "2019-05-01", "valid_to": null}
+{"holder_uid": "NP-004", "instrument_uid": "IN-001", "units": 400000, "valid_from": "2020-01-15", "valid_to": null}
+{"holder_uid": "LE-006", "instrument_uid": "IN-002", "units": 300000, "valid_from": "2019-06-01", "valid_to": null}
+{"holder_uid": "NP-003", "instrument_uid": "IN-002", "units": 150000, "valid_from": "2019-06-01", "valid_to": null}
+{"holder_uid": "NP-005", "instrument_uid": "IN-002", "units": 90000, "valid_from": "2021-03-01", "valid_to": null}
+{"holder_uid": "LE-020", "instrument_uid": "IN-003", "units": 131000, "valid_from": "2022-04-01", "valid_to": null}
+{"holder_uid": "NP-009", "instrument_uid": "IN-003", "units": 131000, "valid_from": "2022-04-01", "valid_to": null}
+{"holder_uid": "LE-019", "instrument_uid": "IN-004", "units": 60000, "valid_from": "2021-02-01", "valid_to": "2024-06-30"}
+{"holder_uid": "NP-010", "instrument_uid": "IN-004", "units": 58400, "valid_from": "2021-02-01", "valid_to": null}
+{"holder_uid": "LE-023", "instrument_uid": "IN-004", "units": 60000, "valid_from": "2024-07-01", "valid_to": null}

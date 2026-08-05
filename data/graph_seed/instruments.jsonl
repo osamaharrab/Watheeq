@@ -1,0 +1,4 @@
+{"instrument_uid": "IN-001", "instrument_label": "Abdali Block C Fractional Units", "instrument_type": "fractional_equity", "total_units": 1000000, "units_issued": 1000000}
+{"instrument_uid": "IN-002", "instrument_label": "Aqaba Logistics Phase 1 Units", "instrument_type": "fractional_equity", "total_units": 500000, "units_issued": 500000}
+{"instrument_uid": "IN-003", "instrument_label": "Tafila Solar Yield Units", "instrument_type": "revenue_share", "total_units": 250000, "units_issued": 262000}
+{"instrument_uid": "IN-004", "instrument_label": "Irbid High Street Units", "instrument_type": "fractional_equity", "total_units": 120000, "units_issued": 118400}

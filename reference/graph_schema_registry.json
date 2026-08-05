@@ -1,0 +1,146 @@
+{
+  "schema_version": "watheeq-graph-1.0.0",
+  "note": "This registry is the authoritative description of the queryable surface. Anything not listed here is out of scope for generated queries, even if it exists in the database.",
+  "conventions": {
+    "ownership_units": "Ownership is stored in basis points as an integer property named bps. 10000 bps equals 100 percent. There is no percentage property.",
+    "monetary_units": "Monetary values are integers in minor units of the currency named in the sibling currency property. There is no decimal amount property.",
+    "validity": "Relationships carrying valid_from and valid_to are effective-dated. valid_to null means currently in force. Any as-of query must constrain both bounds.",
+    "identity": "Entities are identified by entity_uid. legal_name is not unique and is not an identifier."
+  },
+  "node_labels": {
+    "LegalEntity": [
+      "entity_uid",
+      "legal_name",
+      "legal_name_ar",
+      "jurisdiction",
+      "registration_no",
+      "incorporation_date",
+      "status",
+      "status_as_of"
+    ],
+    "NaturalPerson": [
+      "person_uid",
+      "full_name",
+      "full_name_ar",
+      "nationality",
+      "dob_year"
+    ],
+    "AssetUnit": [
+      "asset_uid",
+      "asset_label",
+      "asset_class",
+      "appraised_value_minor",
+      "currency",
+      "appraisal_as_of"
+    ],
+    "Instrument": [
+      "instrument_uid",
+      "instrument_label",
+      "instrument_type",
+      "total_units",
+      "units_issued"
+    ],
+    "Filing": [
+      "filing_uid",
+      "filing_type",
+      "filed_on",
+      "source_registry"
+    ]
+  },
+  "relationship_types": {
+    "HOLDS_INTEREST_IN": {
+      "from": [
+        "LegalEntity",
+        "NaturalPerson"
+      ],
+      "to": [
+        "LegalEntity"
+      ],
+      "properties": [
+        "bps",
+        "valid_from",
+        "valid_to",
+        "filing_uid"
+      ]
+    },
+    "CONTROLS_ASSET": {
+      "from": [
+        "LegalEntity"
+      ],
+      "to": [
+        "AssetUnit"
+      ],
+      "properties": [
+        "bps",
+        "valid_from",
+        "valid_to"
+      ]
+    },
+    "FRACTIONALISED_AS": {
+      "from": [
+        "AssetUnit"
+      ],
+      "to": [
+        "Instrument"
+      ],
+      "properties": []
+    },
+    "HOLDS_UNITS": {
+      "from": [
+        "LegalEntity",
+        "NaturalPerson"
+      ],
+      "to": [
+        "Instrument"
+      ],
+      "properties": [
+        "units",
+        "valid_from",
+        "valid_to"
+      ]
+    },
+    "PLEDGED_TO": {
+      "from": [
+        "AssetUnit"
+      ],
+      "to": [
+        "LegalEntity"
+      ],
+      "properties": [
+        "valid_from",
+        "valid_to",
+        "filing_uid"
+      ]
+    },
+    "SUPERSEDES": {
+      "from": [
+        "Filing"
+      ],
+      "to": [
+        "Filing"
+      ],
+      "properties": []
+    },
+    "ASSERTS_ABOUT": {
+      "from": [
+        "Filing"
+      ],
+      "to": [
+        "LegalEntity"
+      ],
+      "properties": [
+        "asserted_status",
+        "as_of"
+      ]
+    }
+  },
+  "not_represented": [
+    "credit facilities, loan balances, arrears and any bank or finance company record",
+    "tax filings and revenue figures",
+    "employee counts and payroll",
+    "litigation, judgments and enforcement actions",
+    "sanctions and politically exposed person status",
+    "valuations other than the single appraised_value_minor on AssetUnit",
+    "any relationship between a natural person and an asset that is not mediated by an entity or an instrument"
+  ]
+}

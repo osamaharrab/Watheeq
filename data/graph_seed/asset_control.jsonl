@@ -1,0 +1,6 @@
+{"entity_uid": "LE-003", "asset_uid": "AS-001", "bps": 10000, "valid_from": "2016-03-01", "valid_to": null}
+{"entity_uid": "LE-004", "asset_uid": "AS-002", "bps": 10000, "valid_from": "2016-03-01", "valid_to": null}
+{"entity_uid": "LE-009", "asset_uid": "AS-003", "bps": 10000, "valid_from": "2015-09-01", "valid_to": null}
+{"entity_uid": "LE-022", "asset_uid": "AS-004", "bps": 10000, "valid_from": "2022-03-01", "valid_to": null}
+{"entity_uid": "LE-008", "asset_uid": "AS-005", "bps": 10000, "valid_from": "2007-04-01", "valid_to": null}
+{"entity_uid": "LE-010", "asset_uid": "AS-006", "bps": 10000, "valid_from": "2017-06-01", "valid_to": null}

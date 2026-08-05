@@ -1,0 +1,15 @@
+{
+  "data/graph_seed/asset_control.jsonl": "fe3566aeb4d5158cdb4d0de014e330041a03d8b9b195cd4d1032a776e0b0fadf",
+  "data/graph_seed/assets.jsonl": "8cf7470435f6c0c7c5ff702a37c7885f5ebca6cb6d47396d48fe10966684cfca",
+  "data/graph_seed/entities.jsonl": "ca13de269f93c69fca5189b800836761b3aa7bfe6b5698a7aef1239561270850",
+  "data/graph_seed/filing_assertions.jsonl": "f6f6c59b58c7e56aa2c1464f317b7663efd553a52ac53df8987c779323f4cce3",
+  "data/graph_seed/filings.jsonl": "71ddeb4011cc279954c4c919f8007ffd6d567a7d67fbeade823db683d6758233",
+  "data/graph_seed/fractionalisation.jsonl": "d217ce55acb70e77da00b224fe2b6d0e71009bacf2d8e5c21b27b79dce585ba0",
+  "data/graph_seed/instruments.jsonl": "4efe7d1eead5dc538f0dbe7d71f3a5d0f14d91213960aa9bf819b7f7728ecdcc",
+  "data/graph_seed/interests.jsonl": "a4748480bcf1c85fb5536daf4a10b7b7295fac96620446c9f5d08e4ab174738d",
+  "data/graph_seed/persons.jsonl": "a36dac072971b2d9876487815286977192c1408a43e040ae7358c21b84ba24ea",
+  "data/graph_seed/pledges.jsonl": "036bd0f880d45014aeba79398c4dba75a67d67ee55c57538124b786794e24f4a",
+  "data/graph_seed/unit_holdings.jsonl": "a618572b95e3f3b59d1b42e2d19cdaeb49c6058c48bced7c0573db51fa0119b2",
+  "data/eval/eval_questions.jsonl": "9dd97ddbc01370b7cfa586e11f2b6c9c20b63073994926a9dd93fa78e5b1c25e",
+  "reference/graph_schema_registry.json": "5eb4d1d62c7c72da7adfc96898c047ee9b88938b489190a0d6581e1bce038eef"
+}
