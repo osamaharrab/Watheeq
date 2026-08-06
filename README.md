@@ -1,131 +1,203 @@
 # Watheeq Take-Home Assessment
 
-## What I Implemented
+## What Was Completed
 
-Runtime implementation has not started yet.
+This repository currently contains a limited project scaffold and verified local service startup. Business functionality has not been implemented.
 
 Completed work:
 
-- Read and analysed the assessment requirements.
-- Reviewed the supplied graph data and schema registry.
-- Understood the intended service boundaries and main data flow.
-- Defined a deliberately limited implementation plan.
-- Verified the supplied assessment pack successfully using `scripts/verify_pack.py`.
-- Generated and committed `PACK_VERIFICATION.json`.
+- Reviewed the assessment requirements, supplied data, and schema registry.
+- Verified the supplied assessment pack with `scripts/verify_pack.py` and committed `PACK_VERIFICATION.json`.
+- Defined a deliberately limited implementation scope and planned architecture.
+- Created the project file structure for the Django and FastAPI services.
+- Added Docker Compose configuration for PostgreSQL, Django, Neo4j, Weaviate, FastAPI, and local Ollama.
+- Added Django and FastAPI service scaffolds.
+- Added `/health` and `/ready` endpoints for both Python services.
+- Verified that the configured services were reachable through the Docker Compose network.
+- Configured local Ollama settings for `qwen3:4b`.
+- Configured Weaviate without a built-in vectorizer.
 
-## What I Did Not Implement
+## What Was Not Completed
 
-The application services and runtime path have not been implemented yet.
+The scaffold does not yet implement the runtime data or question-answering path.
 
-Work not started yet:
+Not implemented:
 
-- Django and PostgreSQL system-of-record layer.
-- Neo4j graph projection.
-- FastAPI query service.
-- Vector grounding.
-- Local Ollama integration.
-- Docker Compose runtime.
-- Tests and evaluation.
-- Final documentation.
+- PostgreSQL domain models.
+- Data ingestion or a functional `load_seed` command.
+- Neo4j graph projection or a functional `project_graph` command.
+- Projection reconciliation.
+- Vector indexing, embedding generation, entity grounding, or question grounding.
+- Ollama prompting.
+- Cypher generation, Cypher guards, or Neo4j query execution.
+- `/api/v1/ask` or other business endpoints.
+- Answer generation, citations, or audit persistence.
+- Monitoring, evaluation, business-path tests, integration tests, and end-to-end tests.
 
-Deliberately excluded from the planned limited scope:
+Deliberately excluded from the limited scope:
 
-- Complete support for all 48 evaluation questions.
+- Implementation and validation against the full 48-question evaluation set.
 - Advanced beneficial-ownership calculations.
 - Broad multi-hop graph reasoning.
-- Complete query support for assets, instruments, pledges, and filings.
-- Advanced conflict resolution beyond explicitly supported cases.
+- Domain-specific query support for assets, instruments, pledges, and filings.
+- Automated conflict-resolution logic for contradictory and effective-dated records.
 
-This README is being written before implementation begins and will be updated with the final status.
+## Why These Items Were Not Completed
 
-## Why I Chose This Scope
+The assessment intentionally exceeds the available time. I prioritized a clear limited scope, an understandable architecture, a reproducible local environment, a working multi-service Docker Compose stack, verified connectivity, and honest documentation instead of presenting unverified business functionality as complete.
 
-The assessment is intentionally broader than the available time. I am choosing a small, correct, tested, and fully understood end-to-end path instead of attempting broad feature coverage that I cannot verify.
+The detailed engineering choices and tradeoffs are recorded in [DECISIONS.md](DECISIONS.md).
 
-The implementation will prioritise correctness, provenance, clear service boundaries, read-only graph access, citations, auditability, safe abstention, and code that can be explained and modified during the oral defence.
-
-### Scope Decisions
-
-Direct ownership queries are the initial supported path because they exercise the complete architecture: ingestion into PostgreSQL, provenance preservation, projection into Neo4j, read-only querying, optional effective-date filtering, graph citations, and audit recording.
-
-Advanced beneficial ownership and broad multi-hop reasoning are deliberately outside the initial scope because correct implementation requires cycle handling, multiple-path reasoning, conflict handling, and additional verification.
-
-Complete support for all 48 evaluation questions is deliberately outside this planned limited scope. Unsupported question types will produce an explicit, audited abstention instead of an unverified answer.
-
-## Planned Implementation
-
-1. Load the supplied JSONL records through Django into PostgreSQL.
-2. Preserve the original payload and provenance, including source file and source line.
-3. Keep Django and PostgreSQL as the system of record.
-4. Project the required graph data into Neo4j only through the Django `project_graph` command.
-5. Use FastAPI as the query-facing service.
-6. Initially support a narrow set of direct ownership queries, including an optional as-of date.
-7. Return graph node and relationship citations with successful answers.
-8. Record every `/api/v1/ask` answer, abstention, and refusal through Django.
-9. Prevent write queries and use read-only Neo4j access for the FastAPI query path.
-10. Use only a local Ollama model at runtime.
-11. Return an explicit abstention for unsupported questions rather than inventing an answer.
-
-## Architecture Overview
+## Core Project Structure
 
 ```text
-JSONL data
-    ↓
-Django
-    ↓
-PostgreSQL — system of record
-    ↓
-Django project_graph
-    ↓
-Neo4j — derived projection
+django_service/
+  Dockerfile
+  manage.py
+  requirements.txt
+  registry/
+  watheeq/
+fastapi_service/
+  Dockerfile
+  requirements.txt
+  app/
+    clients/
+tests/
+  test_health.py
+  test_guards.py
+docker-compose.yml
+.env.example
+Makefile
+```
 
-User request
-    ↓
-FastAPI
-    ↓
-Guarded read-only Neo4j query
-    ↓
-Answer with citations or abstention
-    ↓
-Django audit record
+The Python service directories currently contain framework scaffolding, health and readiness endpoints, and placeholder modules for future responsibilities. They do not contain business-path implementation.
+
+`tests/test_guards.py` is currently a placeholder for the planned deterministic Cypher guard tests. The guards themselves are not implemented.
+
+## Completed Infrastructure
+
+The Docker Compose stack defines six services:
+
+- PostgreSQL.
+- Django with Django REST Framework.
+- Neo4j.
+- Weaviate.
+- FastAPI.
+- Local Ollama.
+
+Named Docker volumes are configured for PostgreSQL, Neo4j, Weaviate, and Ollama. The services use Docker service names for internal networking.
+
+## Planned Architecture
+
+The following data path is planned and is not yet implemented:
+
+```text
+JSONL
+  -> Django
+  -> PostgreSQL
+  -> Neo4j / Weaviate
+```
+
+The following question path is planned and is not yet implemented:
+
+```text
+User
+  -> FastAPI
+  -> Weaviate grounding
+  -> Ollama qwen3:4b
+  -> Cypher guard
+  -> Neo4j
+  -> deterministic answer
+  -> Django audit
+  -> PostgreSQL
 ```
 
 FastAPI will communicate with Django through internal HTTP APIs rather than writing directly to PostgreSQL.
 
-## Time Log
+## Service Responsibilities
 
-| Date                     | Time        |       Hours | Work completed                                                            |
-| ------------------------ | ----------- | ----------: | ------------------------------------------------------------------------- |
-| Wednesday, 5 August 2026 | 07:00–10:00 |           3 | Reviewed the assessment, architecture, and project requirements           |
-| Wednesday, 5 August 2026 | 17:00–19:00 |           2 | Reviewed the supplied data and schema and defined the implementation plan |
-| **Total recorded time**  |             | **5 hours** | Understanding, data review, and planning                                  |
-
-
+- PostgreSQL: planned system of record and audit storage.
+- Django: planned data ingestion, PostgreSQL management, graph projection, and audit interface.
+- Neo4j: planned rebuildable graph projection, written only by Django's `project_graph` command and queried read-only by FastAPI.
+- Weaviate: planned entity and question grounding; no internal vectorization.
+- Ollama: planned local Cypher generation using `qwen3:4b`.
+- FastAPI: planned orchestration of the guarded query pipeline.
 
 ## Setup and Run
 
-To be updated after implementation.
+```bash
+cp .env.example .env
+docker compose up --build -d
+docker compose ps
+```
 
-## Implemented Commands
+Ollama model setup is separate:
 
-To be updated after implementation.
+```bash
+docker compose exec ollama ollama pull qwen3:4b
+docker compose exec ollama ollama list
+```
+
+The model is stored once in the Docker named volume and is not downloaded once per request.
+
+For this verification, `docker compose exec -T ollama ollama list` confirmed that `qwen3:4b` is installed in the current local `ollama_data` volume. Fresh environments should run the model setup command above.
+
+The verified local model digest is:
+
+```text
+359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
+```
+
+Runtime requests identify the model as `qwen3:4b`; the digest is recorded separately for verification.
+
+## Ports
+
+- Django: `8000`
+- FastAPI: `8001`
+- PostgreSQL: `5432`
+- Neo4j Browser: `7474`
+- Neo4j Bolt: `7687`
+- Weaviate: `8080`
+- Ollama host port: `11435`
+- Ollama internal Docker port: `11434`
+
+## Health and Readiness Checks
+
+```bash
+curl -fsS http://localhost:8000/health
+curl -fsS http://localhost:8000/ready
+curl -fsS http://localhost:8001/health
+curl -fsS http://localhost:8001/ready
+curl -i http://localhost:8080/v1/.well-known/ready
+curl -fsS http://localhost:11435/api/tags
+```
 
 ## Implemented Endpoints
 
-To be updated after implementation.
+- Django: `GET /health`, `GET /ready`.
+- FastAPI: `GET /health`, `GET /ready`.
 
-## Tests and Evaluation
+No business endpoints are implemented yet.
 
-To be updated after implementation.
+## Current Limitations
 
-## Known Limitations
+The repository currently verifies infrastructure startup and connectivity only. It does not ingest data, project a graph, generate or guard Cypher, index vectors, call Ollama for prompting, answer questions, return citations, or persist audit records.
 
-To be updated after implementation.
+Evaluation is not implemented. `EVAL_REPORT.md` has not been created because the assessment states that it must be generated by the evaluation harness.
 
-## AI Use
+## Related Documentation
 
-To be updated after implementation.
+- [AI_USE.md](AI_USE.md): AI-assistance record.
+- [DECISIONS.md](DECISIONS.md): engineering and scope decisions.
+- [SECURITY_NOTE.md](SECURITY_NOTE.md): current security posture and limitations.
+- [AGENTS.md](AGENTS.md): rules for future AI coding assistants.
 
-## Final Time Summary
+## Time Log
 
-To be updated after implementation.
+| Date                     | Time        |        Hours | Work completed                                                                                            |
+| ------------------------ | ----------- | -----------: | --------------------------------------------------------------------------------------------------------- |
+| Wednesday, 5 August 2026 | 07:00–10:00 |            3 | Reviewed the assessment, architecture, and project requirements                                           |
+| Wednesday, 5 August 2026 | 17:00–19:00 |            2 | Reviewed the supplied data and schema and defined the initial implementation plan                         |
+| Thursday, 6 August 2026  | 09:00–12:00 |            3 | Defined the limited-scope architecture, project structure, file responsibilities, and service connections |
+| Thursday, 6 August 2026  | 12:00–16:00 |            4 | Implemented the service scaffold, Docker Compose stack, health checks, and connectivity verification      |
+| **Total recorded time**  |             | **12 hours** | Assessment review, scope definition, architecture, infrastructure, and     |
