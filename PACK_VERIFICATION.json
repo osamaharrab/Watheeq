@@ -1,0 +1,93 @@
+{
+  "pack": "Watheeq candidate assessment pack",
+  "issued_by": "Watheeq",
+  "verified_at_utc": "2026-08-06T07:43:52.417250+00:00",
+  "fixtures_ok": true,
+  "fixtures": [
+    {
+      "path": "data/eval/eval_questions.jsonl",
+      "status": "OK",
+      "sha256": "9dd97ddbc01370b7cfa586e11f2b6c9c20b63073994926a9dd93fa78e5b1c25e",
+      "size_bytes": 5115
+    },
+    {
+      "path": "data/graph_seed/asset_control.jsonl",
+      "status": "OK",
+      "sha256": "fe3566aeb4d5158cdb4d0de014e330041a03d8b9b195cd4d1032a776e0b0fadf",
+      "size_bytes": 648
+    },
+    {
+      "path": "data/graph_seed/assets.jsonl",
+      "status": "OK",
+      "sha256": "8cf7470435f6c0c7c5ff702a37c7885f5ebca6cb6d47396d48fe10966684cfca",
+      "size_bytes": 1169
+    },
+    {
+      "path": "data/graph_seed/entities.jsonl",
+      "status": "OK",
+      "sha256": "ca13de269f93c69fca5189b800836761b3aa7bfe6b5698a7aef1239561270850",
+      "size_bytes": 5925
+    },
+    {
+      "path": "data/graph_seed/filing_assertions.jsonl",
+      "status": "OK",
+      "sha256": "f6f6c59b58c7e56aa2c1464f317b7663efd553a52ac53df8987c779323f4cce3",
+      "size_bytes": 195
+    },
+    {
+      "path": "data/graph_seed/filings.jsonl",
+      "status": "OK",
+      "sha256": "71ddeb4011cc279954c4c919f8007ffd6d567a7d67fbeade823db683d6758233",
+      "size_bytes": 3250
+    },
+    {
+      "path": "data/graph_seed/fractionalisation.jsonl",
+      "status": "OK",
+      "sha256": "d217ce55acb70e77da00b224fe2b6d0e71009bacf2d8e5c21b27b79dce585ba0",
+      "size_bytes": 208
+    },
+    {
+      "path": "data/graph_seed/instruments.jsonl",
+      "status": "OK",
+      "sha256": "4efe7d1eead5dc538f0dbe7d71f3a5d0f14d91213960aa9bf819b7f7728ecdcc",
+      "size_bytes": 665
+    },
+    {
+      "path": "data/graph_seed/interests.jsonl",
+      "status": "OK",
+      "sha256": "a4748480bcf1c85fb5536daf4a10b7b7295fac96620446c9f5d08e4ab174738d",
+      "size_bytes": 3780
+    },
+    {
+      "path": "data/graph_seed/persons.jsonl",
+      "status": "OK",
+      "sha256": "a36dac072971b2d9876487815286977192c1408a43e040ae7358c21b84ba24ea",
+      "size_bytes": 1225
+    },
+    {
+      "path": "data/graph_seed/pledges.jsonl",
+      "status": "OK",
+      "sha256": "036bd0f880d45014aeba79398c4dba75a67d67ee55c57538124b786794e24f4a",
+      "size_bytes": 361
+    },
+    {
+      "path": "data/graph_seed/unit_holdings.jsonl",
+      "status": "OK",
+      "sha256": "a618572b95e3f3b59d1b42e2d19cdaeb49c6058c48bced7c0573db51fa0119b2",
+      "size_bytes": 1280
+    },
+    {
+      "path": "reference/graph_schema_registry.json",
+      "status": "OK",
+      "sha256": "5eb4d1d62c7c72da7adfc96898c047ee9b88938b489190a0d6581e1bce038eef",
+      "size_bytes": 3510
+    }
+  ],
+  "kaggle_dataset": {
+    "present": false,
+    "path": "data/raw/SBAnational.csv",
+    "source_url": "https://www.kaggle.com/datasets/maddraf/sbanational-csv",
+    "note": "Not downloaded at time of verification."
+  },
+  "note": "Supplied fixtures are synthetic material produced by Watheeq for candidate assessment. No figure in them is a real commercial, registry or statistical fact."
+}
