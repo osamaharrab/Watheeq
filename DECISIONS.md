@@ -1,98 +1,127 @@
 # DECISIONS.md
 
-## Decision 1: Limit the submission to a verified scaffold
+## Decision 1: Submit a limited verified scaffold
 
-I chose to submit a small scaffold that starts the required services and verifies basic connectivity. This includes Docker Compose, service wiring, health checks, readiness checks, and placeholder modules.
+**What I chose.**
 
-The trade-off is clear: the project does not yet ingest data, project a graph, answer questions, write audit records, or produce evaluation results. I preferred that over presenting unfinished business logic as complete.
+I limited the implementation to the six-service Docker Compose scaffold, configuration and dependency wiring, and Django/FastAPI health and readiness endpoints. Ownership questions are the planned first business vertical slice, but that slice is not implemented.
 
-## Decision 2: Keep PostgreSQL and Django as the planned source of truth
+**What I rejected, and why.**
 
-PostgreSQL is the planned system of record. Django is planned to own PostgreSQL writes, ingestion provenance, schema registry state, projection commands, and audit persistence.
+I rejected broad, incomplete business paths that could appear functional without end-to-end verification. Ownership is the load-bearing question in the brief and provides a bounded first path through ledger, projection, grounding, querying, citation, and audit.
 
-I did not put business writes in FastAPI or Neo4j because that would blur the source-of-truth boundary required by the assessment. The cost is that useful business behavior still needs Django models, migrations, commands, and internal APIs.
+**What would have to be true for the rejected option to be the better one.**
 
-## Decision 3: Treat Neo4j as a rebuildable projection
+There would need to be enough time to implement and test ingestion, provenance, projection, reconciliation, guarded querying, citations, audit, and evaluation together.
 
-Neo4j is planned as a derived graph projection, rebuilt from PostgreSQL by the Django `project_graph` command.
+**What this decision costs.**
 
-This keeps PostgreSQL authoritative and makes projection drift something the system can detect later. The cost is that projection and reconciliation still have to be implemented before Neo4j query results can be trusted.
+Most assessed business functionality and the required complete test suite remain unfinished.
 
-## Decision 4: Use FastAPI as the planned query orchestrator
+## Decision 2: Keep Django and PostgreSQL authoritative
 
-FastAPI is planned to handle the query-facing path: grounding, local model use, Cypher validation, read-only graph access, deterministic answer construction, and audit submission back to Django.
+**What I chose.**
 
-I kept this responsibility out of Django because the assessment explicitly assigns the query path to FastAPI. The cost is an extra service boundary that must be kept simple and well tested.
+PostgreSQL is the planned system of record, owned through Django. Neo4j is a rebuildable derived projection, and FastAPI does not own authoritative business writes.
 
-## Decision 5: Use Weaviate for vector storage and search only
+**What I rejected, and why.**
 
-Weaviate is deployed and configured as the planned vector-storage and vector-search service:
+I rejected treating Neo4j or Weaviate as authoritative because that would conflict with the brief and weaken provenance and reconciliation boundaries.
 
-```yaml
-DEFAULT_VECTORIZER_MODULE: none
-ENABLE_MODULES: ""
-```
+**What would have to be true for the rejected option to be the better one.**
 
-No vectors, embeddings, indexing, retrieval, or grounding are implemented yet. I disabled built-in vectorizers so future embeddings must be generated explicitly by local Python code. The cost is that the project still needs embedding and indexing work before Weaviate is useful.
+The system would need a different, explicitly graph-native authority model with equivalent provenance, audit, recovery, and reconciliation guarantees.
 
-## Decision 6: Run local Ollama with `qwen3:4b` inside Docker Compose
+**What this decision costs.**
 
-Ollama runs inside Docker Compose. FastAPI reaches it through `http://ollama:11434`. The host exposes Ollama on port `11435` because host port `11434` was unavailable.
+The ledger, projection commands, and reconciliation checks must all be implemented before business graph results can be trusted.
 
-I considered relying on a host-installed Ollama service, but that would add a separate machine dependency and cross-platform networking differences. Running Ollama in Compose gives reviewers one stack to start.
+## Decision 3: Plan external local embeddings for Weaviate
 
-The trade-off is storage and hardware configuration. The model must still be pulled once into the Docker named volume on a new machine, and the installed model is about 2.5 GB. Runtime requests use `qwen3:4b`, not the digest. The verified digest is:
+**What I chose.**
 
-```text
-359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
-```
+I configured Weaviate with internal vectorization disabled. The future grounding design would use local `all-MiniLM-L6-v2` embeddings with 384 dimensions, the same model for stored and query vectors, BM25 separately, and hybrid retrieval with a planned default alpha of `0.5`.
 
-## Decision 7: Treat future LLM output and generated Cypher as untrusted
+**What I rejected, and why.**
 
-The planned LLM role is narrow: generate candidate Cypher under schema constraints. Generated Cypher must be treated as untrusted code and pass deterministic validation before execution.
+I rejected hosted embeddings and Weaviate-managed vectorization because runtime inference must remain local and explicit embedding generation gives the application control over model consistency.
 
-I rejected direct execution of model output because a generated write, unsupported schema access, or uncited claim would be unsafe and could trigger assessment failures. The cost is more implementation work around guards, bounds, read-only credentials, and citation checks.
+**What would have to be true for the rejected option to be the better one.**
 
-## Decision 8: Exclude frontend and monitoring services
+The runtime rules and data-governance boundary would need to permit a hosted or internally managed embedding service with reproducible model pinning.
 
-I did not add a frontend or monitoring stack. The assessment risk is in the data path, graph projection, guarded querying, audit, and evaluation, not in UI or observability tooling.
+**What this decision costs.**
 
-The cost is that there is no dashboard, metrics stack, tracing, or log aggregation.
+Future implementation must add local model dependencies, embedding generation, indexing, rebuild behavior, and retrieval tests. None of that is implemented now.
 
-## Decision 9: Keep supplied data immutable
+## Decision 4: Run Ollama qwen3:4b inside Docker Compose
 
-The supplied data, reference files, templates, and assessment files are treated as immutable inputs.
+**What I chose.**
 
-I rejected cleaning or rewriting fixture data because the assessment expects the application to handle dirty, conflicting, temporal, and hostile records while preserving provenance. The cost is that future ingestion code must do the hard work instead of changing the source files.
+I configured Ollama inside Compose with `qwen3:4b`, using host port `11435` and container port `11434`. A fresh volume requires `ollama pull qwen3:4b`.
 
-## Decision 10: Use Docker Compose for local reproducibility
+**What I rejected, and why.**
 
-Docker Compose is used to start PostgreSQL, Django, Neo4j, Weaviate, FastAPI, and Ollama together.
+I rejected hosted inference because the brief prohibits it, and I rejected relying on a host Ollama process because it adds machine-specific networking and setup outside the stack.
 
-I rejected Kubernetes, cloud deployment, and manually started services because they add scope without helping this take-home run locally. The cost is that the setup is local-development oriented and not production hardened.
+**What would have to be true for the rejected option to be the better one.**
 
-## Decision 11: Refuse automated counterparty risk scoring
+A host process would need to be a guaranteed reviewer prerequisite with stable networking, model storage, and version control. Hosted inference would require a change to the assessment rules.
 
-The planned service should expose traceable ownership and control facts. It should not produce a 0-100 counterparty risk score, a credit recommendation, or a recommended credit limit.
+**What this decision costs.**
 
-The assessment explicitly asks for a position on this kind of requirement. I would refuse it in this project because the supplied data is incomplete, conflicting, effective-dated, and may contain hostile content. Turning those records into a lending decision would be unsupported and high impact.
+The local model requires a separate pull, disk space, startup time, and enough CPU and memory on the reviewer machine.
 
-The safer output is cited facts, conflicts, provenance, and effective dates for authorised human review. Any scoring system would need a separately approved policy, validated labels, fairness analysis, explainability, human oversight, monitoring, appeal mechanisms, and legal review.
+## Decision 5: Refuse automated risk scoring and credit limits
 
-## Negative Result
+**What I chose.**
 
-The application-facing Neo4j connection variables initially used the `NEO4J_*` prefix. Neo4j treats that namespace as server configuration, so those names were a bad fit for application connection settings.
+I refused to implement a 0–100 counterparty risk score or recommended credit limit. A future service should return cited ownership and control facts for human review.
 
-I changed them to `GRAPH_DB_URI`, `GRAPH_DB_USER`, and `GRAPH_DB_PASSWORD`. The correction was verified with Docker Compose startup, healthy service status, and a successful `RETURN 1 AS ok` query.
+**What I rejected, and why.**
 
-## Requirement Interpretation: Answers, Abstentions, and Refusals
+I rejected turning incomplete, conflicting, effective-dated synthetic graph records into a lending recommendation without an approved policy, validated outcomes, fairness review, explainability, and legal basis.
 
-I interpret the future `/api/v1/ask` outcomes as:
+**What would have to be true for the rejected option to be the better one.**
 
-- A factual answer supported by graph node and relationship citations.
-- An abstention because the graph does not support an answer.
-- A refusal because the request is unsafe or outside scope.
+It would require a separately governed decision system with validated data, approved policy, human oversight, monitoring, appeals, and legal and fairness review.
 
-Only factual claims require graph-node and relationship citations. Abstentions and refusals still need an explicit outcome type and reason. Every outcome is planned to be written to the audit ledger.
+**What this decision costs.**
 
-This interpretation is documented only. It is not implemented.
+The service cannot provide the requested automated lending recommendation; it remains limited to factual structure if that future path is implemented.
+
+## Decision 6: Correct the Neo4j application environment namespace
+
+**What I chose.**
+
+Application configuration initially used `NEO4J_*` connection variables. That namespace risked being interpreted as Neo4j server configuration and made the setup less reliable. I changed the application-facing variables to `GRAPH_DB_URI`, `GRAPH_DB_USER`, and `GRAPH_DB_PASSWORD`, then successfully verified service startup and connectivity.
+
+**What I rejected, and why.**
+
+I rejected keeping the original names as a cosmetic convention because their interaction with Neo4j server configuration was the problem that made the earlier setup worse.
+
+**What would have to be true for the rejected option to be the better one.**
+
+The `NEO4J_*` namespace would need to be unambiguous and isolated from Neo4j server environment processing.
+
+**What this decision costs.**
+
+The application uses a project-specific namespace that must be documented and kept consistent across Compose and FastAPI configuration.
+
+## Decision 7: Define explicit answer, abstention, and refusal outcomes
+
+**What I chose.**
+
+I interpret Requirement 9 as requiring every `/api/v1/ask` request to receive an explicit outcome: a factual answer grounded in cited graph nodes, an abstention when the graph or schema cannot support a factual answer, or a refusal when the request is unsafe or outside the allowed scope. This is guidance for future implementation, not current behavior.
+
+**What I rejected, and why.**
+
+I rejected the literal reading that every question must receive a factual, cited answer. Requirement 9 also prohibits unverifiable information, while other parts of the brief explicitly require abstentions and refusals.
+
+**What would have to be true for the rejected option to be the better one.**
+
+The brief would need to state that all allowed questions are guaranteed to be answerable from the graph and clarify how unsafe requests fit the endpoint contract.
+
+**What this decision costs.**
+
+The future response and audit schemas must distinguish all three outcomes and test them separately.

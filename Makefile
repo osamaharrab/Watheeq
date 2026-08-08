@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help config build up down restart ps logs health ready compile django-check check test model-list model-pull django-shell status
+.PHONY: help config build up down restart ps logs health ready compile django-check check model-list model-pull django-shell status
 
 help:
 	@echo "Available commands:"
@@ -16,7 +16,6 @@ help:
 	@echo "  make compile        Compile Python files"
 	@echo "  make django-check   Run Django system checks"
 	@echo "  make check          Run project configuration checks"
-	@echo "  make test           Run the current test suite"
 	@echo "  make model-list     List models installed inside Ollama"
 	@echo "  make model-pull     Pull qwen3:4b inside the Ollama container"
 	@echo "  make django-shell   Open a Django shell"
@@ -70,9 +69,6 @@ django-check:
 check: compile django-check config
 	git diff --check
 	@echo "Project checks completed successfully."
-
-test:
-	pytest -q
 
 model-list:
 	docker compose exec -T ollama ollama list

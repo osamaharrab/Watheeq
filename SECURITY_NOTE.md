@@ -1,58 +1,33 @@
 # SECURITY_NOTE.md
 
-## Current Security Position
+## Trust boundaries
 
-This repository is a development scaffold, not a production-ready system.
+The submitted runtime services are local and Docker-based; no hosted LLM runtime API is required. Checked-in application code and infrastructure configuration define the current scaffold. `.env` is ignored, while `.env.example` contains development placeholders.
 
-The supplied assessment files are treated as immutable, but their content is still untrusted. Future ingestion and query code must assume the data may be dirty, conflicting, temporal, or hostile.
+The supplied schema registry is the planned authority for the future queryable surface. Supplied data, graph properties, user questions, model output, and generated Cypher are untrusted. The submitted application does not implement business ingestion, indexing, projection, or querying, so those future boundaries are documented but not enforced in a business path.
 
-`.env` is ignored by Git. `.env.example` contains development placeholders only. Secrets should come from environment variables and should not be copied into documentation or command examples.
+## Untrusted content handling
 
-There is no authentication or authorization layer. Authenticated and unauthenticated callers have no different permissions. The only implemented HTTP functionality is `/health` and `/ready` on the Django and FastAPI services.
+Text from supplied data or a future graph must be treated only as untrusted data and must never become model instructions. Generated Cypher would also be untrusted future input and would require deterministic schema, write, depth, result-size, and time checks before execution.
 
-## Current Configuration Protections
+Those controls and their tests are not implemented. Current application behavior is limited to health and readiness scaffolding, which does not accept business content.
 
-No hosted LLM API is configured. Ollama runs locally inside Docker Compose, and FastAPI is configured to reach it internally at `http://ollama:11434`.
+## Payload and output integrity
 
-Weaviate built-in vectorizer modules are disabled:
+The implemented health and readiness endpoints accept no business payload and report service or dependency status. Weaviate built-in vectorization and modules are disabled with `DEFAULT_VECTORIZER_MODULE: none` and `ENABLE_MODULES: ""`.
 
-```yaml
-DEFAULT_VECTORIZER_MODULE: none
-ENABLE_MODULES: ""
-```
+There is currently no authentication or authorization layer, so authenticated and unauthenticated callers have no different permissions. The only implemented HTTP surfaces are health and readiness endpoints. Before handling real counterparty data, I would add authenticated access, role-based authorization, restricted ledger and audit access, private service networking, TLS, rate limiting, and separate least-privilege service credentials.
 
-These are configuration protections against specific mistakes. They are not a complete security system.
+Business payload validation, unknown-field rejection, prompt-injection defenses, Text2Cypher validation, Cypher guards, query bounds, separate read-only Neo4j query credentials, citation enforcement, and audit persistence are not implemented.
 
-## Missing Controls
+Before Django ran anywhere other than a developer laptop, I would set `DEBUG=False`, use an externally managed `SECRET_KEY`, restrict `ALLOWED_HOSTS`, use production PostgreSQL credentials, configure HTTPS-aware proxy settings, secure session and CSRF cookies, define trusted CSRF origins, enable production logging, and restrict access to ledger and audit endpoints. The current settings are development-only because this submission is limited to local scaffold verification.
 
-The main missing controls are:
+## Three attacks this design defeats
 
-- Authentication and authorization.
-- Payload validation.
-- Unknown-field rejection.
-- Request-size limits.
-- Encoding validation.
-- Prompt-injection protection.
-- Deterministic Cypher validation.
-- Write-query rejection.
-- Query timeouts and result limits.
-- Read-only Neo4j credentials for the query path.
-- Citation enforcement.
-- Audit persistence.
-- Refusal and abstention recording.
-- Rate limiting.
-- TLS and private networking.
+1. **Data exfiltration to a hosted LLM provider through an inference API.** The runtime uses only the local Ollama service defined in Docker Compose and makes no hosted LLM API calls.
+2. **Accidental secret disclosure through an ordinary commit.** `.gitignore` excludes `.env`, while the tracked `.env.example` contains only placeholder development values.
+3. **Unintended use of a default or untrusted embedding model.** Weaviate built-in vectorization is disabled with `DEFAULT_VECTORIZER_MODULE: none` and `ENABLE_MODULES: ""`.
 
-Generated Cypher must eventually be treated as untrusted code. It should not execute until deterministic guards prove that it is read-only, schema-constrained, and bounded.
+## One attack this design does not defeat
 
-## Django Before Production
-
-Before Django runs outside a developer laptop, it would need `DEBUG=False`, an externally managed `SECRET_KEY`, restricted `ALLOWED_HOSTS`, secure PostgreSQL credentials, HTTPS-aware proxy settings, secure session cookies, secure CSRF cookies, explicit CSRF trusted origins, production logging, and restricted access to ledger and audit endpoints.
-
-Those controls are not implemented in this scaffold.
-
-## What This Does Not Defeat
-
-The current scaffold does not defeat prompt injection, malicious generated Cypher, unauthorized access, payload abuse, missing citations, or unaudited refusals and abstentions.
-
-Those risks remain because the ingestion path, query path, guards, audit persistence, authentication, authorization, and evaluation are not implemented.
+A hostile caller to future business or query endpoints is not currently controlled. Authentication, authorization, payload validation, prompt-injection handling, deterministic Cypher guards, bounded graph execution, citation enforcement, and audit persistence would all be required before exposing those endpoints.

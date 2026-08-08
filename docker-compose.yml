@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file:
-      - .env.example
+      - .env
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     build:
       context: ./django_service
     env_file:
-      - .env.example
+      - .env
     ports:
       - "8000:8000"
     depends_on:
@@ -33,7 +33,7 @@ services:
   neo4j:
     image: neo4j:5-community
     env_file:
-      - .env.example
+      - .env
     environment:
       NEO4J_server_memory_heap_initial__size: 256m
       NEO4J_server_memory_heap_max__size: 512m
@@ -96,7 +96,7 @@ services:
     build:
       context: ./fastapi_service
     env_file:
-      - .env.example
+      - .env
     ports:
       - "8001:8000"
     depends_on:
