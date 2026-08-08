@@ -4,7 +4,7 @@
 
 Codex was used as an implementation assistant for the project scaffold, Docker Compose and configuration wiring, health and readiness endpoints, verification commands, and documentation edits.
 
-The exact ChatGPT and Codex model identifiers were not recorded. Neither tool independently chose the final architecture or submission scope. Ollama `qwen3:4b` was configured as the local runtime model, but the submitted application does not prompt it.
+The exact  Codex model identifiers was  not recorded. Neither tool independently chose the final architecture or submission scope. Ollama `qwen3:4b` was configured as the local runtime model, but the submitted application does not prompt it.
 
 ## Components that received substantial assistance
 
