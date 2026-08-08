@@ -6,9 +6,10 @@
 * Django owns PostgreSQL writes and audit persistence.
 * Django project configuration stays under `django_service/watheeq/`.
 * Domain functionality stays under `django_service/registry/`.
-* Data-loading and graph-projection commands belong under:
-
-  `django_service/registry/management/commands/`
+* Planning-only command boundaries belong under:
+django_service/registry/planned_commands/
+When these commands are actually implemented as functional Django management commands, they should move under:
+django_service/registry/management/commands/
 
 ### FastAPI
 
