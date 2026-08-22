@@ -2,6 +2,8 @@
 
 ## What I completed
 
+### Original submitted scaffold
+
 - Reviewed the supplied assessment, data, and schema registry.
 - Verified the supplied assessment pack.
 - Defined a deliberately limited implementation scope.
@@ -12,51 +14,69 @@
 - Configured local Ollama with `qwen3:4b`.
 - Configured Weaviate with internal vectorization and modules disabled.
 
-The submitted application is an infrastructure scaffold. It does not implement business ingestion or question answering.
+The original timed submission was an infrastructure scaffold. It did not implement business ingestion or question answering.
+
+### Post-submission continuation — 22 August 2026
+
+Later continuation work implemented and manually verified the first Django/PostgreSQL data foundation:
+
+- reviewed the assessment, supplied source data, authoritative schema, and existing scaffold;
+- removed the temporary `django_service/registry/planned_commands/` directory and generated Python cache artifacts;
+- implemented `IngestionRecord`, `LegalEntity`, `NaturalPerson`, `Filing`, and `OwnershipInterest`;
+- implemented provenance-preserving ingestion for all 11 JSONL files and the first normalized `HOLDS_INTEREST_IN` ownership slice;
+- implemented the real `registry/management/commands/load_seed.py` command;
+- wrote 16 Django tests and generated `registry/migrations/0001_initial.py`;
+- applied the migration, completed `python manage.py check` with no issues, and passed all 16 tests;
+- loaded all 118 physical records: 117 accepted, 1 coerced, 0 quarantined, and 0 rejected;
+- coerced `LE-023` dates from `11/03/2015` to `2015-03-11` and from `31/01/2026` to `2026-01-31`;
+- ran `load_seed` a second time with identical accounting; and
+- verified PostgreSQL counts of 118 ingestion records, 24 legal entities, 10 natural persons, 19 filings, and 29 ownership interests.
+
+This continuation does not implement the graph projection or question-answering path.
 
 ## What I did not complete
 
-- PostgreSQL business-domain models and ingestion ledger
-- functional `load_seed`
 - `project_graph`
 - `reconcile_projection`
-- audit persistence and replay
+- full audit persistence and `replay_audit`
 - embedding generation
-- Weaviate indexing
-- entity and question grounding
-- Text2Cypher
+- Weaviate indexing and entity/question grounding
+- guarded Text2Cypher
 - deterministic Cypher guards
 - bounded graph execution
+- FastAPI business endpoints
 - `/api/v1/ask`
-- ownership and other business query endpoints
 - deterministic cited answers
 - complete abstention and refusal behavior
 - 48-question evaluation harness
 - `EVAL_REPORT.md`
-- required complete automated test suite
+- complete assessment-wide automated test suite; 16 tests currently cover only the Django data-foundation phase, while the assessment requires at least 18 across the completed system
 
 ## Why I scoped it this way
 
 The brief is intentionally larger than the available time. I prioritized a small, verified infrastructure foundation over broad functionality that I could not verify properly.
 
-The first planned business vertical slice would cover ownership questions only. It would prove one end-to-end path using `LegalEntity`, `NaturalPerson`, `HOLDS_INTEREST_IN`, ownership `bps`, `valid_from`, `valid_to`, and provenance. This ownership path is planned; it is not implemented in the current submission.
+The later continuation implemented the PostgreSQL ingestion and normalized ownership portion of that first vertical slice. Projection, querying, citations, and audit remain planned.
 
-## Planned implementation structure
+## Implementation status and planned structure
 
-The placeholder modules below document the intended implementation boundaries. They do not implement the corresponding business functionality.
+The registry now contains the implemented data foundation alongside placeholders for later assessment responsibilities.
 
 ```text
 django_service/registry/
-├── ingestion.py
-├── ownership.py
-├── graph_projection.py
-├── reconciliation.py
-├── audit.py
-└── planned_commands/
-    ├── load_seed.py
-    ├── project_graph.py
-    ├── reconcile_projection.py
-    └── replay_audit.py
+├── models.py                                  IMPLEMENTED
+├── ingestion.py                               IMPLEMENTED
+├── ownership.py                               IMPLEMENTED
+├── graph_projection.py                        PLANNED
+├── reconciliation.py                          PLANNED
+├── audit.py                                    PLANNED
+└── management/commands/
+    └── load_seed.py                            IMPLEMENTED
+
+Future management commands:
+├── project_graph                               PLANNED
+├── reconcile_projection                        PLANNED
+└── replay_audit                                 PLANNED
 
 fastapi_service/app/
   grounding.py
@@ -71,29 +91,24 @@ neo4j/
   constraints.cypher
 ```
 
-| File | Planned responsibility |
+| File | Status and responsibility |
 | --- | --- |
-| `registry/ingestion.py` | Supplied JSONL to provenance-preserving PostgreSQL records |
-| `registry/ownership.py` | First ownership-domain processing slice |
-| `registry/graph_projection.py` | PostgreSQL to Neo4j projection |
-| `registry/reconciliation.py` | PostgreSQL/Neo4j drift detection |
-| `registry/audit.py` | Immutable query audit ownership |
-| `planned_commands/load_seed.py` | Future ingestion command boundary |
-| `planned_commands/project_graph.py` | Future graph projection command boundary |
-| `grounding.py` | Weaviate entity and question grounding |
-| `schema_registry.py` | Allowed query-surface access |
-| `guards.py` | Candidate Cypher validation |
-| `pipeline.py` | Query-path orchestration |
-| `clients/neo4j.py` | Planned read-only graph access |
-| `clients/ollama.py` | Planned local Cypher generation |
-| FastAPI `ownership.py` | Ownership query and result handling |
-
-`planned_commands/` documents the required future Django management-command boundaries without registering non-functional commands with Django.
+| `registry/models.py` | **Implemented:** ingestion ledger, entity/person/filing registries, and normalized ownership model |
+| `registry/ingestion.py` | **Implemented:** provenance-preserving JSONL ingestion and accounting |
+| `registry/ownership.py` | **Implemented:** first normalized ownership-domain slice |
+| `registry/management/commands/load_seed.py` | **Implemented:** idempotent seed-loading command |
+| `registry/graph_projection.py` | **Planned:** PostgreSQL-to-Neo4j projection |
+| `registry/reconciliation.py` | **Planned:** PostgreSQL/Neo4j drift detection |
+| `registry/audit.py` | **Planned:** immutable query-audit ownership |
+| `project_graph` | **Planned:** graph-projection management command |
+| `reconcile_projection` | **Planned:** projection-reconciliation management command |
+| `replay_audit` | **Planned:** audit-replay management command |
+| `grounding.py`, `schema_registry.py`, `guards.py`, and `pipeline.py` | **Planned:** FastAPI query-path responsibilities |
 
 Using the supplied schema registry as authority, the first ownership mapping is:
 
 ```text
-PLANNED — NOT IMPLEMENTED
+IMPLEMENTED IN POSTGRESQL — NEO4J PROJECTION AND QUERYING REMAIN PLANNED
 
 NaturalPerson or LegalEntity
         |
@@ -106,25 +121,23 @@ NaturalPerson or LegalEntity
 LegalEntity
 ```
 
-### Planned ownership data flow
+### Ownership data flow
 
 ```text
-PLANNED — NOT IMPLEMENTED
-
 all supplied JSONL
     ->
-Django ingestion
+Django ingestion                            IMPLEMENTED
     ->
-PostgreSQL ledger + provenance
+PostgreSQL ledger + provenance              IMPLEMENTED
     ->
-ownership processing
+normalized ownership processing             IMPLEMENTED
     ->
-graph projection
+graph projection                            PLANNED
     ->
-Neo4j derived ownership graph
+Neo4j derived ownership graph               PLANNED
 ```
 
-All supplied records remain part of future ingestion accountability; ownership only limits the first supported business/query slice.
+All supplied records now participate in ingestion accountability. Only entities, persons, filings, and ownership interests are normalized in this phase.
 
 ### Planned ownership query flow
 
@@ -160,7 +173,7 @@ The planned local embedding model is `all-MiniLM-L6-v2`, with 384-dimensional em
 
 Embedding generation, indexing, and retrieval are not implemented.
 
-## Run the scaffold
+## Run the current scaffold and Django data foundation
 
 Clone the repository and enter the project directory:
 
@@ -176,6 +189,33 @@ cp .env.example .env
 docker compose up --build -d
 docker compose ps
 ```
+
+The current repository does not yet provide the unfinished graph-query and AI-answering path end to end.
+
+Apply the checked-in Django migration and run the Django system check:
+
+```bash
+docker compose run --rm django python manage.py migrate
+docker compose run --rm django python manage.py check
+```
+
+Run the 16 Django data-foundation tests:
+
+```bash
+docker compose run --rm \
+  --volume "$PWD/data:/app/data:ro" \
+  django python manage.py test registry.tests
+```
+
+Load the supplied seed data:
+
+```bash
+docker compose run --rm \
+  --volume "$PWD/data:/app/data:ro" \
+  django python manage.py load_seed --source data/graph_seed
+```
+
+`./data` is mounted read-only at `/app/data` because the Django image build context is `django_service/`.
 
 Pull the configured Ollama model into a fresh Ollama volume:
 
@@ -215,3 +255,7 @@ curl -fsS http://localhost:11435/api/tags
 | Thursday, 6 August 2026  | 09:00–12:00 |     3 | Defined the limited scope, architecture, project structure, service responsibilities, and integration boundaries |
 | Thursday, 6 August 2026  | 12:00–16:00 |     4 | Implemented and verified the Docker Compose scaffold, health/readiness endpoints, and service connectivity |
 | **Total recorded time**  |             | **12 hours** | |
+
+### Post-submission development — 22 August 2026
+
+Approximately 6 hours were spent implementing, reviewing, and manually verifying the Django/PostgreSQL data foundation. This was later continuation work and is not included in the original timed assessment total of 12 hours.

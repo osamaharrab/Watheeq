@@ -1,10 +1,10 @@
 # DECISIONS.md
 
-## Decision 1: Submit a limited verified scaffold
+## Decision 1: Original timed submission — submit a limited verified scaffold
 
 **What I chose.**
 
-I limited the implementation to the six-service Docker Compose scaffold, configuration and dependency wiring, and Django/FastAPI health and readiness endpoints. Ownership questions are the planned first business vertical slice, but that slice is not implemented.
+For the original timed submission, I limited the implementation to the six-service Docker Compose scaffold, configuration and dependency wiring, and Django/FastAPI health and readiness endpoints. Ownership questions were the planned first business vertical slice, but that slice was not implemented within the timed submission.
 
 **What I rejected, and why.**
 
@@ -18,11 +18,15 @@ There would need to be enough time to implement and test ingestion, provenance, 
 
 Most assessed business functionality and the required complete test suite remain unfinished.
 
+**Current post-submission development state.**
+
+On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Graph projection, querying, citations, audit, grounding, and evaluation remain planned.
+
 ## Decision 2: Keep Django and PostgreSQL authoritative
 
 **What I chose.**
 
-PostgreSQL is the planned system of record, owned through Django. Neo4j is a rebuildable derived projection, and FastAPI does not own authoritative business writes.
+PostgreSQL is the system of record, owned through Django. The implemented registry and ingestion ledger now persist their authoritative records there. Neo4j remains a planned rebuildable derived projection, and FastAPI does not own authoritative business writes.
 
 **What I rejected, and why.**
 
@@ -34,7 +38,7 @@ The system would need a different, explicitly graph-native authority model with 
 
 **What this decision costs.**
 
-The ledger, projection commands, and reconciliation checks must all be implemented before business graph results can be trusted.
+The ledger is now implemented. Projection commands and reconciliation checks must still be implemented before business graph results can be trusted.
 
 ## Decision 3: Plan external local embeddings for Weaviate
 
