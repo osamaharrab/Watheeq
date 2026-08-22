@@ -1,1 +1,1 @@
-"""Registry domain application for future ledger and provenance ownership."""
+"""Registry domain application for ledger, provenance, and ownership data."""
