@@ -1,3 +1,5 @@
-// PLANNED ONLY — not implemented in this submission.
-//
-// Future responsibility: hold Neo4j uniqueness and integrity constraints for projected graph identifiers.
+CREATE CONSTRAINT legal_entity_entity_uid IF NOT EXISTS
+FOR (entity:LegalEntity) REQUIRE entity.entity_uid IS UNIQUE;
+
+CREATE CONSTRAINT natural_person_person_uid IF NOT EXISTS
+FOR (person:NaturalPerson) REQUIRE person.person_uid IS UNIQUE;
