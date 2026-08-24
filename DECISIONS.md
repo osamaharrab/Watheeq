@@ -20,7 +20,7 @@ Most assessed business functionality and the required complete test suite remain
 
 **Current post-submission development state.**
 
-On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Subsequent continuation work implemented and manually verified the rebuildable Neo4j ownership projection and 3 focused projection tests. Reconciliation, querying, citations, audit, grounding, and evaluation remain planned.
+On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Subsequent continuation work implemented and manually verified the rebuildable Neo4j ownership projection, read-only reconciliation for that ownership slice, and 6 focused projection and reconciliation tests. Querying, citations, audit, grounding, and evaluation remain planned.
 
 ## Decision 2: Keep Django and PostgreSQL authoritative
 
@@ -38,7 +38,7 @@ The system would need a different, explicitly graph-native authority model with 
 
 **What this decision costs.**
 
-The ledger and ownership projection command are now implemented. Reconciliation checks must still be implemented before projection drift can be detected automatically.
+The ledger, ownership projection command, and read-only reconciliation check are now implemented for the ownership slice. Reconciliation detects drift but does not repair it automatically; rebuilding remains an explicit `project_graph` operation.
 
 ## Decision 3: Plan external local embeddings for Weaviate
 

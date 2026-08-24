@@ -34,7 +34,7 @@ Later continuation work implemented and manually verified the first Django/Postg
 
 At that point, the graph projection and question-answering path remained unimplemented.
 
-### Later post-submission continuation — 24 August 2026 — ownership graph projection
+### Later post-submission continuation — 24 August 2026 — ownership graph projection and reconciliation
 
 Later continuation work implemented and manually verified the first Neo4j ownership projection:
 
@@ -46,9 +46,16 @@ Later continuation work implemented and manually verified the first Neo4j owners
 - passed the Django system check and all 19 Django tests, including 3 focused graph-projection tests; and
 - visually inspected the projected ownership graph in Neo4j.
 
+The same continuation later implemented and manually verified projection reconciliation for the ownership slice:
+
+- implemented `reconciliation.py` and the `reconcile_projection` management command;
+- compared `LegalEntity` and `NaturalPerson` identities and complete `HOLDS_INTEREST_IN` ownership facts rather than counts alone;
+- added and passed 3 focused reconciliation tests, bringing the current Django test suite to 22 tests;
+- introduced deliberate same-count ownership drift by changing one relationship's `bps` value and confirmed that reconciliation failed; and
+- rebuilt Neo4j with `project_graph` and confirmed that reconciliation succeeded again.
+
 ## What I did not complete
 
-- `reconcile_projection`
 - full audit persistence and `replay_audit`
 - embedding generation
 - Weaviate indexing and entity/question grounding
@@ -61,13 +68,13 @@ Later continuation work implemented and manually verified the first Neo4j owners
 - complete abstention and refusal behavior
 - 48-question evaluation harness
 - `EVAL_REPORT.md`
-- complete assessment-wide automated test coverage; 19 tests currently cover the Django data foundation and ownership projection, but later required phases remain untested because they are not implemented
+- complete assessment-wide automated test coverage; 22 tests currently cover the Django data foundation, ownership projection, and projection reconciliation, but later required phases remain untested because they are not implemented
 
 ## Why I scoped it this way
 
 The brief is intentionally larger than the available time. I prioritized a small, verified infrastructure foundation over broad functionality that I could not verify properly.
 
-The later continuation implemented the PostgreSQL ingestion, normalized ownership records, and the rebuildable Neo4j ownership projection. Reconciliation, querying, citations, and audit remain planned.
+The later continuation implemented the PostgreSQL ingestion, normalized ownership records, rebuildable Neo4j ownership projection, and read-only projection reconciliation. Querying, citations, and audit remain planned.
 
 ## Implementation status and planned structure
 
@@ -79,14 +86,14 @@ django_service/registry/
 ├── ingestion.py                               IMPLEMENTED
 ├── ownership.py                               IMPLEMENTED
 ├── graph_projection.py                        IMPLEMENTED — OWNERSHIP SLICE
-├── reconciliation.py                          PLANNED
+├── reconciliation.py                          IMPLEMENTED — OWNERSHIP SLICE
 ├── audit.py                                    PLANNED
 └── management/commands/
     ├── load_seed.py                            IMPLEMENTED
-    └── project_graph.py                        IMPLEMENTED — OWNERSHIP SLICE
+    ├── project_graph.py                        IMPLEMENTED — OWNERSHIP SLICE
+    └── reconcile_projection.py                 IMPLEMENTED — OWNERSHIP SLICE
 
 Future management commands:
-├── reconcile_projection                        PLANNED
 └── replay_audit                                 PLANNED
 
 fastapi_service/app/
@@ -109,10 +116,10 @@ neo4j/
 | `registry/ownership.py` | **Implemented:** first normalized ownership-domain slice |
 | `registry/management/commands/load_seed.py` | **Implemented:** idempotent seed-loading command |
 | `registry/graph_projection.py` | **Implemented for the ownership slice:** rebuilds Neo4j from PostgreSQL and projects legal entities, natural persons, and ownership relationships |
-| `registry/reconciliation.py` | **Planned:** PostgreSQL/Neo4j drift detection |
+| `registry/reconciliation.py` | **Implemented for the ownership slice:** read-only PostgreSQL/Neo4j identity and ownership-fact comparison |
 | `registry/audit.py` | **Planned:** immutable query-audit ownership |
 | `project_graph` | **Implemented for the ownership slice:** rebuildable graph-projection management command |
-| `reconcile_projection` | **Planned:** projection-reconciliation management command |
+| `reconcile_projection` | **Implemented for the ownership slice:** reports drift and exits non-zero without repairing it |
 | `replay_audit` | **Planned:** audit-replay management command |
 | `grounding.py`, `schema_registry.py`, `guards.py`, and `pipeline.py` | **Planned:** FastAPI query-path responsibilities |
 
@@ -147,6 +154,16 @@ ownership graph projection                  IMPLEMENTED
     ->
 Neo4j derived ownership graph               IMPLEMENTED
 ```
+
+### Projection reconciliation
+
+```text
+PostgreSQL authoritative ownership data
+    ↓ compare
+Neo4j derived ownership projection
+```
+
+`reconcile_projection` compares `LegalEntity` identities, `NaturalPerson` identities, and complete `HOLDS_INTEREST_IN` ownership facts. It is read-only: it reports drift but does not repair or synchronize either database. Manual verification changed one Neo4j relationship's `bps` value without changing the relationship count; reconciliation detected the mismatch, and a later explicit `project_graph` rebuild restored a successful comparison.
 
 All supplied records now participate in ingestion accountability. Only entities, persons, filings, and ownership interests are normalized in this phase.
 
@@ -210,7 +227,7 @@ docker compose run --rm django python manage.py migrate
 docker compose run --rm django python manage.py check
 ```
 
-Run the 19 Django data-foundation and graph-projection tests:
+Run the 22 Django data-foundation, graph-projection, and reconciliation tests:
 
 ```bash
 docker compose run --rm \
@@ -235,6 +252,14 @@ docker compose run --rm django python manage.py project_graph
 ```
 
 The manually verified projection contains 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships. Running the command twice returned the same counts both times.
+
+Compare the Neo4j ownership projection with authoritative PostgreSQL data:
+
+```bash
+docker compose exec -T django python manage.py reconcile_projection
+```
+
+The command was manually verified in a matching state, against deliberate same-count ownership drift, and again after rebuilding Neo4j with `project_graph`. It detects and reports drift but does not repair it automatically.
 
 Pull the configured Ollama model into a fresh Ollama volume:
 
@@ -281,4 +306,4 @@ Approximately 6 hours were spent implementing, reviewing, and manually verifying
 
 ### Post-submission development — 24 August 2026
 
-Approximately 5 hours were spent on later continuation work reviewing the existing Django ingestion and ownership implementation; implementing and reviewing the PostgreSQL-to-Neo4j ownership projection; adding the `project_graph` Django management command, Neo4j uniqueness constraints, and 3 focused graph-projection tests; running `project_graph` twice with stable counts; verifying 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships; visually inspecting the graph in Neo4j; and running the complete Django test suite with all 19 tests passing. These 5 hours are post-submission continuation work and are not included in the original timed assessment total of 12 hours.
+Approximately 7 hours were spent implementing and verifying the PostgreSQL-to-Neo4j ownership projection and reconciliation, including `project_graph`, Neo4j constraints, graph-projection tests, `reconcile_projection`, and deliberate drift detection. These 7 hours are post-submission continuation work and are not included in the original timed assessment total of 12 hours.
