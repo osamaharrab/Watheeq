@@ -2,7 +2,7 @@
 
 ## Tools and models used
 
-Codex was used as an implementation assistant for the project scaffold, Docker Compose and configuration wiring, health and readiness endpoints, verification commands, and documentation edits. During post-submission continuation, Codex also substantially assisted with the Django registry models, ingestion logic, ownership normalization, `load_seed` command, Django tests, and readability comments.
+Codex was used as an implementation assistant for the project scaffold, Docker Compose and configuration wiring, health and readiness endpoints, verification commands, and documentation edits. During post-submission continuation, Codex also substantially assisted with the Django registry models, ingestion logic, ownership normalization, `load_seed` command, the simple ownership graph projection, `project_graph` command, Neo4j constraints, Django Neo4j driver dependency update, focused tests, and readability comments.
 
 ChatGPT assisted with assessment interpretation, scope review, architecture discussion, implementation-decision review, review of code and verification output, and preparation of implementation instructions. The exact ChatGPT and Codex model identifiers were not recorded. Neither ChatGPT nor Codex independently chose the final architecture or scope. Ollama `qwen3:4b` is configured as the local runtime model, but the application does not yet prompt it.
 
@@ -10,9 +10,9 @@ ChatGPT assisted with assessment interpretation, scope review, architecture disc
 
 AI assistance was substantial in the Django and FastAPI scaffolds, service and environment wiring, Docker Compose dependency configuration, health and readiness checks, documentation structure, and review of verification results.
 
-In the post-submission continuation, assistance was also substantial in implementing and explaining `IngestionRecord`, `LegalEntity`, `NaturalPerson`, `Filing`, `OwnershipInterest`, provenance-preserving ingestion, ownership normalization, the real `load_seed` command, and 16 Django tests.
+In the post-submission continuation, assistance was also substantial in implementing and explaining `IngestionRecord`, `LegalEntity`, `NaturalPerson`, `Filing`, `OwnershipInterest`, provenance-preserving ingestion, ownership normalization, the real `load_seed` command, the rebuildable Neo4j ownership projection, the real `project_graph` command, the two ownership-slice uniqueness constraints, the Neo4j dependency update, and 19 Django tests, including 3 focused graph-projection tests.
 
-Graph projection, projection reconciliation, grounding, embeddings, Text2Cypher, query guards, audit, and question answering remain unimplemented.
+Projection reconciliation, grounding, embeddings, Text2Cypher, query guards, audit, and question answering remain unimplemented.
 
 ## Suggestions rejected or materially corrected
 
@@ -27,6 +27,8 @@ The assessment pack was checked with the supplied verification script. During th
 
 For the post-submission Django data foundation, the developer manually reviewed the generated code, generated and inspected `registry/migrations/0001_initial.py`, applied the migration, ran the Django system check, ran all 16 Django tests, ran seed ingestion twice, inspected the resulting accounting, and checked the actual PostgreSQL row counts before accepting the implementation.
 
+For the ownership graph projection, the developer manually reviewed the implementation, ran the Django system check, passed the 3 focused graph-projection tests and all 19 Django tests, ran `project_graph` twice with identical counts, and visually inspected the resulting graph in Neo4j.
+
 This documentation-only accuracy pass did not rerun Docker, services, tests, migrations, seed ingestion, or network checks.
 
 ## Where you relied on your own judgement instead of generated output
@@ -35,4 +37,4 @@ I retained responsibility for the final architecture and scope, keeping PostgreS
 
 ## Unresolved concerns
 
-The main remaining assessment gaps are graph projection and reconciliation, grounding and embeddings, guarded and bounded Text2Cypher, citations, audit persistence and replay, authentication and authorization, the evaluation harness, and the complete assessment-wide automated test suite. The current 16 tests cover only the implemented Django data foundation.
+The main remaining assessment gaps are projection reconciliation, grounding and embeddings, guarded and bounded Text2Cypher, citations, audit persistence and replay, authentication and authorization, the evaluation harness, and complete assessment-wide test coverage. The current 19 tests cover the implemented Django data foundation and ownership graph projection.

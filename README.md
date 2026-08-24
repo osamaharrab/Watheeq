@@ -32,11 +32,22 @@ Later continuation work implemented and manually verified the first Django/Postg
 - ran `load_seed` a second time with identical accounting; and
 - verified PostgreSQL counts of 118 ingestion records, 24 legal entities, 10 natural persons, 19 filings, and 29 ownership interests.
 
-This continuation does not implement the graph projection or question-answering path.
+At that point, the graph projection and question-answering path remained unimplemented.
+
+### Later post-submission continuation — 24 August 2026 — ownership graph projection
+
+Later continuation work implemented and manually verified the first Neo4j ownership projection:
+
+- implemented `graph_projection.py` and the `project_graph` management command;
+- rebuilt the derived graph from authoritative PostgreSQL records before each projection;
+- projected 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships;
+- added uniqueness constraints for `LegalEntity.entity_uid` and `NaturalPerson.person_uid`;
+- ran `project_graph` twice with the same projection counts both times;
+- passed the Django system check and all 19 Django tests, including 3 focused graph-projection tests; and
+- visually inspected the projected ownership graph in Neo4j.
 
 ## What I did not complete
 
-- `project_graph`
 - `reconcile_projection`
 - full audit persistence and `replay_audit`
 - embedding generation
@@ -50,13 +61,13 @@ This continuation does not implement the graph projection or question-answering 
 - complete abstention and refusal behavior
 - 48-question evaluation harness
 - `EVAL_REPORT.md`
-- complete assessment-wide automated test suite; 16 tests currently cover only the Django data-foundation phase, while the assessment requires at least 18 across the completed system
+- complete assessment-wide automated test coverage; 19 tests currently cover the Django data foundation and ownership projection, but later required phases remain untested because they are not implemented
 
 ## Why I scoped it this way
 
 The brief is intentionally larger than the available time. I prioritized a small, verified infrastructure foundation over broad functionality that I could not verify properly.
 
-The later continuation implemented the PostgreSQL ingestion and normalized ownership portion of that first vertical slice. Projection, querying, citations, and audit remain planned.
+The later continuation implemented the PostgreSQL ingestion, normalized ownership records, and the rebuildable Neo4j ownership projection. Reconciliation, querying, citations, and audit remain planned.
 
 ## Implementation status and planned structure
 
@@ -67,14 +78,14 @@ django_service/registry/
 ├── models.py                                  IMPLEMENTED
 ├── ingestion.py                               IMPLEMENTED
 ├── ownership.py                               IMPLEMENTED
-├── graph_projection.py                        PLANNED
+├── graph_projection.py                        IMPLEMENTED — OWNERSHIP SLICE
 ├── reconciliation.py                          PLANNED
 ├── audit.py                                    PLANNED
 └── management/commands/
-    └── load_seed.py                            IMPLEMENTED
+    ├── load_seed.py                            IMPLEMENTED
+    └── project_graph.py                        IMPLEMENTED — OWNERSHIP SLICE
 
 Future management commands:
-├── project_graph                               PLANNED
 ├── reconcile_projection                        PLANNED
 └── replay_audit                                 PLANNED
 
@@ -97,10 +108,10 @@ neo4j/
 | `registry/ingestion.py` | **Implemented:** provenance-preserving JSONL ingestion and accounting |
 | `registry/ownership.py` | **Implemented:** first normalized ownership-domain slice |
 | `registry/management/commands/load_seed.py` | **Implemented:** idempotent seed-loading command |
-| `registry/graph_projection.py` | **Planned:** PostgreSQL-to-Neo4j projection |
+| `registry/graph_projection.py` | **Implemented for the ownership slice:** rebuilds Neo4j from PostgreSQL and projects legal entities, natural persons, and ownership relationships |
 | `registry/reconciliation.py` | **Planned:** PostgreSQL/Neo4j drift detection |
 | `registry/audit.py` | **Planned:** immutable query-audit ownership |
-| `project_graph` | **Planned:** graph-projection management command |
+| `project_graph` | **Implemented for the ownership slice:** rebuildable graph-projection management command |
 | `reconcile_projection` | **Planned:** projection-reconciliation management command |
 | `replay_audit` | **Planned:** audit-replay management command |
 | `grounding.py`, `schema_registry.py`, `guards.py`, and `pipeline.py` | **Planned:** FastAPI query-path responsibilities |
@@ -108,7 +119,7 @@ neo4j/
 Using the supplied schema registry as authority, the first ownership mapping is:
 
 ```text
-IMPLEMENTED IN POSTGRESQL — NEO4J PROJECTION AND QUERYING REMAIN PLANNED
+IMPLEMENTED IN POSTGRESQL AND NEO4J — QUERYING REMAINS PLANNED
 
 NaturalPerson or LegalEntity
         |
@@ -132,9 +143,9 @@ PostgreSQL ledger + provenance              IMPLEMENTED
     ->
 normalized ownership processing             IMPLEMENTED
     ->
-graph projection                            PLANNED
+ownership graph projection                  IMPLEMENTED
     ->
-Neo4j derived ownership graph               PLANNED
+Neo4j derived ownership graph               IMPLEMENTED
 ```
 
 All supplied records now participate in ingestion accountability. Only entities, persons, filings, and ownership interests are normalized in this phase.
@@ -173,7 +184,7 @@ The planned local embedding model is `all-MiniLM-L6-v2`, with 384-dimensional em
 
 Embedding generation, indexing, and retrieval are not implemented.
 
-## Run the current scaffold and Django data foundation
+## Run the current scaffold, Django data foundation, and ownership projection
 
 Clone the repository and enter the project directory:
 
@@ -190,7 +201,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-The current repository does not yet provide the unfinished graph-query and AI-answering path end to end.
+The current repository does not yet provide an end-to-end graph-query and AI-answering path.
 
 Apply the checked-in Django migration and run the Django system check:
 
@@ -199,7 +210,7 @@ docker compose run --rm django python manage.py migrate
 docker compose run --rm django python manage.py check
 ```
 
-Run the 16 Django data-foundation tests:
+Run the 19 Django data-foundation and graph-projection tests:
 
 ```bash
 docker compose run --rm \
@@ -216,6 +227,14 @@ docker compose run --rm \
 ```
 
 `./data` is mounted read-only at `/app/data` because the Django image build context is `django_service/`.
+
+Rebuild the derived Neo4j ownership projection from PostgreSQL:
+
+```bash
+docker compose run --rm django python manage.py project_graph
+```
+
+The manually verified projection contains 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships. Running the command twice returned the same counts both times.
 
 Pull the configured Ollama model into a fresh Ollama volume:
 
@@ -259,3 +278,7 @@ curl -fsS http://localhost:11435/api/tags
 ### Post-submission development — 22 August 2026
 
 Approximately 6 hours were spent implementing, reviewing, and manually verifying the Django/PostgreSQL data foundation. This was later continuation work and is not included in the original timed assessment total of 12 hours.
+
+### Post-submission development — 24 August 2026
+
+Approximately 5 hours were spent on later continuation work reviewing the existing Django ingestion and ownership implementation; implementing and reviewing the PostgreSQL-to-Neo4j ownership projection; adding the `project_graph` Django management command, Neo4j uniqueness constraints, and 3 focused graph-projection tests; running `project_graph` twice with stable counts; verifying 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships; visually inspecting the graph in Neo4j; and running the complete Django test suite with all 19 tests passing. These 5 hours are post-submission continuation work and are not included in the original timed assessment total of 12 hours.
