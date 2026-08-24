@@ -20,13 +20,13 @@ Most assessed business functionality and the required complete test suite remain
 
 **Current post-submission development state.**
 
-On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Graph projection, querying, citations, audit, grounding, and evaluation remain planned.
+On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Subsequent continuation work implemented and manually verified the rebuildable Neo4j ownership projection and 3 focused projection tests. Reconciliation, querying, citations, audit, grounding, and evaluation remain planned.
 
 ## Decision 2: Keep Django and PostgreSQL authoritative
 
 **What I chose.**
 
-PostgreSQL is the system of record, owned through Django. The implemented registry and ingestion ledger now persist their authoritative records there. Neo4j remains a planned rebuildable derived projection, and FastAPI does not own authoritative business writes.
+PostgreSQL is the system of record, owned through Django. The implemented registry and ingestion ledger persist their authoritative records there. Neo4j is now implemented as a rebuildable derived projection for the ownership slice, and FastAPI does not own authoritative business writes.
 
 **What I rejected, and why.**
 
@@ -38,7 +38,7 @@ The system would need a different, explicitly graph-native authority model with 
 
 **What this decision costs.**
 
-The ledger is now implemented. Projection commands and reconciliation checks must still be implemented before business graph results can be trusted.
+The ledger and ownership projection command are now implemented. Reconciliation checks must still be implemented before projection drift can be detected automatically.
 
 ## Decision 3: Plan external local embeddings for Weaviate
 
