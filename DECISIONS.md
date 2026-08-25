@@ -129,3 +129,21 @@ The brief would need to state that all allowed questions are guaranteed to be an
 **What this decision costs.**
 
 The future response and audit schemas must distinguish all three outcomes and test them separately.
+
+## Decision 8: Expose a verified registry subset before expanding the graph
+
+**What I chose.**
+
+I exposed only the implemented ownership graph slice while keeping the supplied registry authoritative. The running schema endpoint derives `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN` definitions directly from that registry.
+
+**What I rejected, and why.**
+
+I rejected pretending that the full supplied registry is currently implemented. The project intentionally prioritizes one verified vertical slice over broad incomplete support.
+
+**What would have to be true for the rejected option to be the better one.**
+
+The remaining relationship types would need to be implemented one by one through normalization → PostgreSQL → projection → reconciliation → query support.
+
+**What this decision costs.**
+
+The assessment's full schema-conformance requirement is not yet satisfied. The current runtime schema is an authoritative-registry-derived ownership subset until the remaining registry relationships are implemented and verified.

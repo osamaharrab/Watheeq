@@ -1,6 +1,24 @@
 from django.db import models
 
 
+# Stores the single authoritative schema registry version currently in force.
+class SchemaRegistryState(models.Model):
+    id = models.PositiveSmallIntegerField(
+        primary_key=True,
+        default=1,
+        editable=False,
+    )
+    version = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(id=1),
+                name="schema_registry_state_singleton_id",
+            )
+        ]
+
+
 # Preserves one source line and its ingestion outcome for complete accounting.
 class IngestionRecord(models.Model):
     # Defines the four outcomes reported by the seed loader.
