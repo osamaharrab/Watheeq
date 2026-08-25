@@ -1,4 +1,9 @@
-"""PLANNED ONLY — not implemented in this submission.
+from pydantic import BaseModel
 
-Future responsibility: define strict API request and response contracts for graph-query outcomes.
-"""
+
+class SchemaResponse(BaseModel):
+    schema_version: str
+    conventions: dict[str, str]
+    node_labels: dict[str, list[str]]
+    relationship_types: dict[str, dict[str, list[str]]]
+    not_represented: list[str]

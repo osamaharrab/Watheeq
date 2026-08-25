@@ -54,6 +54,17 @@ The same continuation later implemented and manually verified projection reconci
 - introduced deliberate same-count ownership drift by changing one relationship's `bps` value and confirmed that reconciliation failed; and
 - rebuilt Neo4j with `project_graph` and confirmed that reconciliation succeeded again.
 
+### Later post-submission continuation — 25 August 2026 — schema registry foundation
+
+This continuation adds the first runtime schema-registry boundary without expanding the graph:
+
+- persists `watheeq-graph-1.0.0` in PostgreSQL as the schema registry version currently in force;
+- implements `GET /api/v1/schema` in FastAPI;
+- reads definitions from the single authoritative `reference/graph_schema_registry.json` file; and
+- exposes only the verified ownership query surface: `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN`.
+
+The endpoint does not expose the registry's other node labels or relationship types because they are not implemented in the running query path. Entity resolution, the ownership API, Text2Cypher, `/api/v1/ask`, audit, grounding, citations, and evaluation also remain unsupported.
+
 ## What I did not complete
 
 - full audit persistence and `replay_audit`
@@ -62,13 +73,13 @@ The same continuation later implemented and manually verified projection reconci
 - guarded Text2Cypher
 - deterministic Cypher guards
 - bounded graph execution
-- FastAPI business endpoints
+- FastAPI entity and question endpoints
 - `/api/v1/ask`
 - deterministic cited answers
 - complete abstention and refusal behavior
 - 48-question evaluation harness
 - `EVAL_REPORT.md`
-- complete assessment-wide automated test coverage; 22 tests currently cover the Django data foundation, ownership projection, and projection reconciliation, but later required phases remain untested because they are not implemented
+- complete assessment-wide automated test coverage; 24 Django tests and 8 FastAPI tests currently cover the implemented data foundation, ownership projection, reconciliation, schema state, registry loading, and schema endpoint, but later required phases remain untested because they are not implemented
 
 ## Why I scoped it this way
 
@@ -111,7 +122,7 @@ neo4j/
 
 | File | Status and responsibility |
 | --- | --- |
-| `registry/models.py` | **Implemented:** ingestion ledger, entity/person/filing registries, and normalized ownership model |
+| `registry/models.py` | **Implemented:** schema version in force, ingestion ledger, entity/person/filing registries, and normalized ownership model |
 | `registry/ingestion.py` | **Implemented:** provenance-preserving JSONL ingestion and accounting |
 | `registry/ownership.py` | **Implemented:** first normalized ownership-domain slice |
 | `registry/management/commands/load_seed.py` | **Implemented:** idempotent seed-loading command |
@@ -121,12 +132,13 @@ neo4j/
 | `project_graph` | **Implemented for the ownership slice:** rebuildable graph-projection management command |
 | `reconcile_projection` | **Implemented for the ownership slice:** reports drift and exits non-zero without repairing it |
 | `replay_audit` | **Planned:** audit-replay management command |
-| `grounding.py`, `schema_registry.py`, `guards.py`, and `pipeline.py` | **Planned:** FastAPI query-path responsibilities |
+| `schema_registry.py` | **Implemented for the ownership slice:** loads the authoritative registry and selects the verified runtime query surface |
+| `grounding.py`, `guards.py`, and `pipeline.py` | **Planned:** later FastAPI query-path responsibilities |
 
 Using the supplied schema registry as authority, the first ownership mapping is:
 
 ```text
-IMPLEMENTED IN POSTGRESQL AND NEO4J — QUERYING REMAINS PLANNED
+IMPLEMENTED IN POSTGRESQL, NEO4J, AND THE SCHEMA ENDPOINT
 
 NaturalPerson or LegalEntity
         |
@@ -227,12 +239,18 @@ docker compose run --rm django python manage.py migrate
 docker compose run --rm django python manage.py check
 ```
 
-Run the 22 Django data-foundation, graph-projection, and reconciliation tests:
+Run the 24 Django data-foundation, graph-projection, reconciliation, and schema-state tests:
 
 ```bash
 docker compose run --rm \
   --volume "$PWD/data:/app/data:ro" \
   django python manage.py test registry.tests
+```
+
+Run the 8 focused FastAPI schema-registry and endpoint tests:
+
+```bash
+docker compose exec -T fastapi python -m unittest discover -s tests -v
 ```
 
 Load the supplied seed data:
@@ -282,6 +300,7 @@ curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:8000/ready
 curl -fsS http://localhost:8001/health
 curl -fsS http://localhost:8001/ready
+curl -fsS http://localhost:8001/api/v1/schema
 curl -i http://localhost:8080/v1/.well-known/ready
 curl -fsS http://localhost:11435/api/tags
 ```

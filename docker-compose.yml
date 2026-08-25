@@ -97,6 +97,8 @@ services:
       context: ./fastapi_service
     env_file:
       - .env
+    volumes:
+      - ./reference/graph_schema_registry.json:/app/reference/graph_schema_registry.json:ro
     ports:
       - "8001:8000"
     depends_on:

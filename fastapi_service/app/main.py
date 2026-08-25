@@ -6,9 +6,11 @@ from fastapi.responses import JSONResponse
 from neo4j import GraphDatabase
 
 from app.config import get_settings
+from app.routes.schema import router as schema_router
 
 
 app = FastAPI(title="Watheeq Query Service")
+app.include_router(schema_router)
 
 
 @app.get("/health")
