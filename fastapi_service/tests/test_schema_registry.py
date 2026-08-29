@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -117,4 +118,47 @@ class SchemaEndpointTests(unittest.TestCase):
         response = self.client.get("/health")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok", "service": "fastapi"})
+        self.assertEqual(response.json(), {"status": "ok"})
+
+    @patch("app.main.OllamaClient")
+    @patch("app.main.WatheeqGrounding")
+    @patch("app.main.Neo4jClient")
+    @patch("app.main.DjangoClient")
+    def test_ready_returns_200_when_dependencies_are_ready(
+        self,
+        django_client,
+        neo4j_client,
+        grounding,
+        ollama_client,
+    ):
+        django_client.return_value.readiness.return_value = True
+        neo4j_client.return_value.ready.return_value = True
+        grounding.return_value.ready.return_value = True
+        ollama_client.return_value.ready.return_value = True
+
+        response = self.client.get("/ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+
+    @patch("app.main.OllamaClient")
+    @patch("app.main.WatheeqGrounding")
+    @patch("app.main.Neo4jClient")
+    @patch("app.main.DjangoClient")
+    def test_ready_returns_503_when_a_dependency_is_unavailable(
+        self,
+        django_client,
+        neo4j_client,
+        grounding,
+        ollama_client,
+    ):
+        django_client.return_value.readiness.return_value = True
+        neo4j_client.return_value.ready.return_value = False
+        grounding.return_value.ready.return_value = True
+        ollama_client.return_value.ready.return_value = True
+
+        response = self.client.get("/ready")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["status"], "unavailable")
+        self.assertFalse(response.json()["checks"]["neo4j"])

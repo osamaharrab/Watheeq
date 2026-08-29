@@ -1,70 +1,68 @@
-import asyncio
+"""FastAPI application for the ownership query slice."""
+from __future__ import annotations
 
-import httpx
-from fastapi import FastAPI, status
-from fastapi.responses import JSONResponse
-from neo4j import GraphDatabase
+from fastapi import FastAPI, Request
+from starlette.responses import JSONResponse
 
-from app.config import get_settings
-from app.routes.schema import router as schema_router
+from .clients.django import DjangoClient
+from .clients.neo4j import Neo4jClient
+from .clients.ollama import OllamaClient
+from .clients.weaviate import WatheeqGrounding
+from .config import get_settings
+from .routes.ask import router as ask_router
+from .routes.entities import router as entities_router
+from .routes.schema import router as schema_router
 
 
-app = FastAPI(title="Watheeq Query Service")
+app = FastAPI(title="Watheeq ownership query service")
 app.include_router(schema_router)
+app.include_router(entities_router)
+app.include_router(ask_router)
+
+
+@app.middleware("http")
+async def reject_oversized_body(request: Request, call_next):
+    """Reject oversized requests while replaying validated bytes to the endpoint."""
+    content_length = request.headers.get("content-length")
+    limit = get_settings().max_request_body_bytes
+    if content_length and (not content_length.isdigit() or int(content_length) > limit):
+        return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
+    # Content-Length is optional and client-controlled, so count received bytes too.
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
+    # Downstream FastAPI parsing still needs the body after this middleware consumes it.
+    request._body = bytes(body)
+    return await call_next(request)
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "service": "fastapi"}
-
-
-async def check_http(url: str, path: str):
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"{url.rstrip('/')}{path}")
-        if response.status_code < 400:
-            return {"status": "ok"}
-        return {"status": "unavailable", "status_code": response.status_code}
-    except Exception as exc:
-        return {"status": "unavailable", "error": str(exc)}
-
-
-def check_neo4j():
-    settings = get_settings()
-    driver = GraphDatabase.driver(
-        settings.graph_db_uri,
-        auth=(settings.graph_db_user, settings.graph_db_password),
-    )
-    try:
-        driver.verify_connectivity()
-        with driver.session() as session:
-            session.run("RETURN 1").consume()
-        return {"status": "ok"}
-    except Exception as exc:
-        return {"status": "unavailable", "error": str(exc)}
-    finally:
-        driver.close()
+def health() -> dict[str, str]:
+    # Reports process liveness without probing dependencies.
+    return {"status": "ok"}
 
 
 @app.get("/ready")
-async def ready():
+def ready() -> dict[str, object]:
+    # Reports whether every local dependency needed by the query service is ready.
     settings = get_settings()
-    dependencies = {
-        "django": await check_http(settings.django_base_url, "/ready"),
-        "neo4j": await asyncio.to_thread(check_neo4j),
-        "weaviate": await check_http(settings.weaviate_url, "/v1/.well-known/ready"),
-        "ollama": await check_http(settings.ollama_url, "/api/tags"),
+    django = DjangoClient(settings)
+    neo4j = Neo4jClient(settings)
+    grounding = WatheeqGrounding(settings)
+    ollama = OllamaClient(settings)
+    # Readiness is stricter than health because it checks the full local pipeline.
+    checks = {
+        "django": django.readiness(),
+        "neo4j": neo4j.ready(),
+        "weaviate": grounding.ready(),
+        "ollama": ollama.ready(),
     }
-    is_ready = all(item["status"] == "ok" for item in dependencies.values())
-    response_status = (
-        status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
-    )
-
-    return JSONResponse(
-        status_code=response_status,
-        content={
-            "status": "ready" if is_ready else "not_ready",
-            "service": "fastapi",
-            "dependencies": dependencies,
-        },
-    )
+    django.close()
+    neo4j.close()
+    ollama.close()
+    body = {"status": "ok" if all(checks.values()) else "unavailable", "checks": checks}
+    if not all(checks.values()):
+        return JSONResponse(status_code=503, content=body)
+    return body

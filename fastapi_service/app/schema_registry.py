@@ -1,3 +1,4 @@
+"""Load the supplied registry and expose only the implemented ownership subset."""
 import json
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,14 @@ IMPLEMENTED_RELATIONSHIP_TYPES = (
 
 
 class SchemaRegistryError(ValueError):
+    """Raised when the supplied authoritative registry cannot be used safely."""
     pass
 
 
 def load_authoritative_registry(
     registry_path: str | Path = AUTHORITATIVE_REGISTRY_PATH,
 ) -> dict[str, Any]:
+    """Read and validate the supplied graph registry without changing it."""
     path = Path(registry_path)
     try:
         registry = json.loads(path.read_text(encoding="utf-8"))
@@ -105,8 +108,10 @@ def load_authoritative_registry(
 
 
 def get_queryable_schema() -> dict[str, Any]:
+    """Derive the strict FastAPI ownership subset from the full supplied registry."""
     registry = load_authoritative_registry()
 
+    # Keep the registry authoritative while exposing only implemented graph types.
     node_labels = {
         name: registry["node_labels"][name]
         for name in IMPLEMENTED_NODE_LABELS
