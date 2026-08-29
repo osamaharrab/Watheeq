@@ -1,44 +1,39 @@
-# AI_USE.md
+# AI use disclosure
 
 ## Tools and models used
 
-Codex was used as an implementation assistant for the project scaffold, Docker Compose and configuration wiring, health and readiness endpoints, verification commands, and documentation edits. During post-submission continuation, Codex also substantially assisted with the Django registry models, ingestion logic, ownership normalization, `load_seed` command, the simple ownership graph projection and reconciliation, `project_graph` and `reconcile_projection` commands, Neo4j constraints, Django Neo4j driver dependency update, the schema registry loader and endpoint, schema-version persistence, focused tests, and readability guidance.
+I used OpenAI ChatGPT and OpenAI Codex as development-assistance tools. The exact ChatGPT and Codex model names were not recorded in the repository, so I do not state them here.
 
-ChatGPT assisted with assessment interpretation, scope review, architecture discussion, implementation-decision review, review of code and verification output, and preparation of implementation instructions. The exact ChatGPT and Codex model identifiers were not recorded. Neither ChatGPT nor Codex independently chose the final architecture or scope. Ollama `qwen3:4b` is configured as the local runtime model, but the application does not yet prompt it.
+At runtime, the service uses the local Ollama model `qwen3:4b`, pinned to digest `359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7`. This runtime model is separate from the development-assistance tools. The grounding index uses the local `all-MiniLM-L6-v2` embedding model.
 
-## Components that received substantial assistance
+## How I used AI assistance
 
-AI assistance was substantial in the Django and FastAPI scaffolds, service and environment wiring, Docker Compose dependency configuration, health and readiness checks, documentation structure, and review of verification results.
+I made the final architecture, scope, schema, semantic, policy, evaluation, and implementation decisions.
 
-In the post-submission continuation, assistance was also substantial in implementing and explaining `IngestionRecord`, `LegalEntity`, `NaturalPerson`, `Filing`, `OwnershipInterest`, `SchemaRegistryState`, provenance-preserving ingestion, ownership normalization, the real `load_seed` command, the rebuildable Neo4j ownership projection, the real `project_graph` command, the two ownership-slice uniqueness constraints, the Neo4j dependency update, the simple read-only reconciliation implementation, the real `reconcile_projection` command, the authoritative registry loader, the ownership-only schema endpoint, 24 Django tests, and 8 focused FastAPI tests.
+I used Codex mainly to carry out specific implementation tasks that I described. I used ChatGPT to help turn my decisions into clear Codex prompts, discuss design alternatives, reason through bugs, inspect results I shared, and plan verification. Meaningful assistance included Text2Cypher behaviour, grounding and entity-resolution choices, policy edge cases, test-failure review, evaluation planning, and repository cleanup.
 
-Grounding, embeddings, Text2Cypher, query guards, audit, and question answering remain unimplemented.
+I reviewed AI-generated changes and ran the verification and tests myself. AI tools did not automatically define business truth, registry semantics, or evaluation ground truth.
 
-## Suggestions rejected or materially corrected
+The local runtime model is called once to plan ownership intent and Cypher. It does not write the final business answer; the application renders that answer deterministically from verified relationship facts and citations.
 
-1. Application-facing connection variables initially used the `NEO4J_*` namespace. I corrected them to `GRAPH_DB_URI`, `GRAPH_DB_USER`, and `GRAPH_DB_PASSWORD` because Neo4j can interpret `NEO4J_*` variables as server configuration, making the setup less reliable. Successful service startup and connectivity during the recorded implementation work verified the corrected configuration.
-2. An early Weaviate configuration could have implied that its default setting alone was sufficient. I explicitly disabled built-in vectorization and modules with `DEFAULT_VECTORIZER_MODULE: none` and `ENABLE_MODULES: ""` because the intended future design uses externally generated local embeddings. The retained Compose configuration and successful Weaviate readiness check during the recorded implementation work verified that configuration.
-3. I rejected the assumption that `OLLAMA_MODEL=qwen3:4b` installs the model. Ollama requires a separate `ollama pull qwen3:4b`; the local model list and tags response were checked during the recorded implementation work.
-4. I rejected descriptions of planning stubs as implemented functionality. In the original submission they were explicitly marked `PLANNED ONLY`. During later implementation, the temporary `planned_commands/` directory was removed, the real `load_seed` command moved to Django's management-command path, and future assessment modules remained clearly identified as planned.
+## AI behaviour I corrected
 
-## Verification performed
+### Exact resolution before hybrid retrieval
 
-The assessment pack was checked with the supplied verification script. During the original recorded implementation work, the Compose configuration, service startup order, Django system checks, PostgreSQL and Neo4j connectivity, Weaviate readiness, Ollama model availability and digest, and Django/FastAPI health and readiness endpoints were checked.
+Hybrid grounding was initially used directly for an exact legal-entity-name question. It returned several candidates and led to an incorrect ownership query. I changed the design so exact canonical ID or legal-name resolution runs first; hybrid lexical/vector discovery is only a fallback.
 
-For the post-submission Django data foundation, the developer manually reviewed the generated code, generated and inspected `registry/migrations/0001_initial.py`, applied the migration, ran the Django system check, ran all 16 Django tests, ran seed ingestion twice, inspected the resulting accounting, and checked the actual PostgreSQL row counts before accepting the implementation.
+I verified the correction through `/api/v1/entities/resolve` and `/api/v1/ask` results, with focused grounding tests. This matters because a legal name can be non-unique, so an exact result may still correctly contain more than one entity rather than forcing a guess.
 
-For the ownership graph projection, the developer manually reviewed the implementation, ran the Django system check, passed the 3 focused graph-projection tests and all 19 Django tests, ran `project_graph` twice with identical counts, and visually inspected the resulting graph in Neo4j.
+### Explicit ownership endpoint preservation
 
-For projection reconciliation, the developer manually reviewed the implementation, ran the 3 focused reconciliation tests, ran reconciliation against the real PostgreSQL and Neo4j services, introduced deliberate same-count ownership drift, confirmed that the command detected the mismatch, rebuilt Neo4j with `project_graph`, and confirmed that reconciliation succeeded afterward.
+For a question naming both an ownership holder and a held legal entity, a planner could produce an incoming-ownership query and silently omit the holder. That would change the meaning of the question.
 
-For the schema registry foundation, the implementation was compiled and reviewed, both changed service images were built, the migration and Django system check were run, all 24 Django tests passed with the documented read-only seed-data mount, all 8 FastAPI tests passed, the PostgreSQL version value was read directly, and the running health, readiness, and schema endpoints were checked. The first full Django test invocation without the existing seed-data mount failed clearly and was not treated as a passing result.
+I kept exact named entities as planning hints and added fail-closed validation after mention resolution. If a supported ownership plan loses an explicit endpoint, it abstains before Neo4j executes rather than repairing the plan or returning a partial answer. Focused pipeline tests cover the preserved holder and target roles.
 
-This documentation-only accuracy pass did not rerun Docker, services, tests, migrations, seed ingestion, or network checks.
+## My engineering judgment
 
-## Where you relied on your own judgement instead of generated output
+I chose a narrow ownership slice and kept PostgreSQL as the source of truth, with Neo4j as a derived projection. I retained the supplied `bps` unit instead of creating percentage properties and interpreted effective dates with an inclusive `valid_to` upper bound.
 
-I retained responsibility for the final architecture and scope, keeping PostgreSQL and Django authoritative, treating Neo4j as a rebuildable projection, selecting ownership as the first business vertical slice, choosing local Ollama, refusing automated risk scores and credit-limit recommendations, deciding what remained intentionally unfinished, reviewing generated code, and accepting changes only after the manual checks described above.
+I chose exact-first grounding, a fail-closed Cypher guard, explicit named-endpoint preservation, and distinct `answered`, `unsupported`, `abstained`, and `refused` outcomes. I also declined to add risk scores, credit scores, lending decisions, or recommendations because the supported facts do not justify them.
 
-## Unresolved concerns
-
-The main remaining assessment gaps are grounding and embeddings, guarded and bounded Text2Cypher, citations, audit persistence and replay, authentication and authorization, the evaluation harness, and complete assessment-wide test coverage. The current 24 Django tests and 8 FastAPI tests cover the implemented Django data foundation, ownership graph projection, projection reconciliation, schema state, authoritative registry loading, and ownership-only schema endpoint.
+I did not alter evaluation ground truth to force a perfect result. The latest evaluation exposed conservative planner classification and is retained in `EVAL_REPORT.md`.

@@ -1,328 +1,177 @@
-# Watheeq Take-Home Assessment
+# Watheeq Ownership Graph Slice
 
-## What I completed
+## What I implemented
 
-### Original submitted scaffold
+- Django ingests the supplied seed data into PostgreSQL with source provenance.
+- PostgreSQL is the authoritative record for the implemented data.
+- Django projects the ownership slice into Neo4j and can reconcile that projection with PostgreSQL.
+- Weaviate provides entity grounding and discovery.
+- FastAPI serves the query API. It uses local Ollama `qwen3:4b` once to plan ownership intent and produce Text2Cypher.
+- Generated Cypher is checked by deterministic read-only guards before Neo4j runs it.
+- Final ownership answers are rendered deterministically from verified Neo4j relationship facts and citations. Every `/api/v1/ask` outcome is audited in PostgreSQL.
+- An evaluation harness posts the supplied questions and records results in `EVAL_REPORT.md`.
 
-- Reviewed the supplied assessment, data, and schema registry.
-- Verified the supplied assessment pack.
-- Defined a deliberately limited implementation scope.
-- Created Django and FastAPI service scaffolds.
-- Configured PostgreSQL, Django, Neo4j, Weaviate, FastAPI, and Ollama in Docker Compose.
-- Implemented `/health` and `/ready` for Django and FastAPI.
-- Verified the intended service connectivity during the recorded implementation work.
-- Configured local Ollama with `qwen3:4b`.
-- Configured Weaviate with internal vectorization and modules disabled.
+## What I intentionally did not implement
 
-The original timed submission was an infrastructure scaffold. It did not implement business ingestion or question answering.
+The supplied registry is larger than this queryable slice. This project does not query or project asset control, instruments, unit holdings, pledges, filings as graph nodes, or other relationships outside ownership. It also does not support credit facilities, loan balances, sanctions or PEP status, valuation, risk scoring, credit scoring, lending decisions, or business recommendations.
 
-### Post-submission continuation — 22 August 2026
+## Why
 
-Later continuation work implemented and manually verified the first Django/PostgreSQL data foundation:
+I chose one complete ownership vertical slice instead of shallow support for the whole supplied registry. The implemented path covers ingestion, provenance, projection, reconciliation, grounding, guarded queries, citations, and audit for the same supported facts.
 
-- reviewed the assessment, supplied source data, authoritative schema, and existing scaffold;
-- removed the temporary `django_service/registry/planned_commands/` directory and generated Python cache artifacts;
-- implemented `IngestionRecord`, `LegalEntity`, `NaturalPerson`, `Filing`, and `OwnershipInterest`;
-- implemented provenance-preserving ingestion for all 11 JSONL files and the first normalized `HOLDS_INTEREST_IN` ownership slice;
-- implemented the real `registry/management/commands/load_seed.py` command;
-- wrote 16 Django tests and generated `registry/migrations/0001_initial.py`;
-- applied the migration, completed `python manage.py check` with no issues, and passed all 16 tests;
-- loaded all 118 physical records: 117 accepted, 1 coerced, 0 quarantined, and 0 rejected;
-- coerced `LE-023` dates from `11/03/2015` to `2015-03-11` and from `31/01/2026` to `2026-01-31`;
-- ran `load_seed` a second time with identical accounting; and
-- verified PostgreSQL counts of 118 ingestion records, 24 legal entities, 10 natural persons, 19 filings, and 29 ownership interests.
-
-At that point, the graph projection and question-answering path remained unimplemented.
-
-### Later post-submission continuation — 24 August 2026 — ownership graph projection and reconciliation
-
-Later continuation work implemented and manually verified the first Neo4j ownership projection:
-
-- implemented `graph_projection.py` and the `project_graph` management command;
-- rebuilt the derived graph from authoritative PostgreSQL records before each projection;
-- projected 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships;
-- added uniqueness constraints for `LegalEntity.entity_uid` and `NaturalPerson.person_uid`;
-- ran `project_graph` twice with the same projection counts both times;
-- passed the Django system check and all 19 Django tests, including 3 focused graph-projection tests; and
-- visually inspected the projected ownership graph in Neo4j.
-
-The same continuation later implemented and manually verified projection reconciliation for the ownership slice:
-
-- implemented `reconciliation.py` and the `reconcile_projection` management command;
-- compared `LegalEntity` and `NaturalPerson` identities and complete `HOLDS_INTEREST_IN` ownership facts rather than counts alone;
-- added and passed 3 focused reconciliation tests, bringing the current Django test suite to 22 tests;
-- introduced deliberate same-count ownership drift by changing one relationship's `bps` value and confirmed that reconciliation failed; and
-- rebuilt Neo4j with `project_graph` and confirmed that reconciliation succeeded again.
-
-### Later post-submission continuation — 25 August 2026 — schema registry foundation
-
-This continuation adds the first runtime schema-registry boundary without expanding the graph:
-
-- persists `watheeq-graph-1.0.0` in PostgreSQL as the schema registry version currently in force;
-- implements `GET /api/v1/schema` in FastAPI;
-- reads definitions from the single authoritative `reference/graph_schema_registry.json` file; and
-- exposes only the verified ownership query surface: `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN`.
-
-The endpoint does not expose the registry's other node labels or relationship types because they are not implemented in the running query path. Entity resolution, the ownership API, Text2Cypher, `/api/v1/ask`, audit, grounding, citations, and evaluation also remain unsupported.
-
-## What I did not complete
-
-- full audit persistence and `replay_audit`
-- embedding generation
-- Weaviate indexing and entity/question grounding
-- guarded Text2Cypher
-- deterministic Cypher guards
-- bounded graph execution
-- FastAPI entity and question endpoints
-- `/api/v1/ask`
-- deterministic cited answers
-- complete abstention and refusal behavior
-- 48-question evaluation harness
-- `EVAL_REPORT.md`
-- complete assessment-wide automated test coverage; 24 Django tests and 8 FastAPI tests currently cover the implemented data foundation, ownership projection, reconciliation, schema state, registry loading, and schema endpoint, but later required phases remain untested because they are not implemented
-
-## Why I scoped it this way
-
-The brief is intentionally larger than the available time. I prioritized a small, verified infrastructure foundation over broad functionality that I could not verify properly.
-
-The later continuation implemented the PostgreSQL ingestion, normalized ownership records, rebuildable Neo4j ownership projection, and read-only projection reconciliation. Querying, citations, and audit remain planned.
-
-## Implementation status and planned structure
-
-The registry now contains the implemented data foundation alongside placeholders for later assessment responsibilities.
+## Architecture
 
 ```text
-django_service/registry/
-├── models.py                                  IMPLEMENTED
-├── ingestion.py                               IMPLEMENTED
-├── ownership.py                               IMPLEMENTED
-├── graph_projection.py                        IMPLEMENTED — OWNERSHIP SLICE
-├── reconciliation.py                          IMPLEMENTED — OWNERSHIP SLICE
-├── audit.py                                    PLANNED
-└── management/commands/
-    ├── load_seed.py                            IMPLEMENTED
-    ├── project_graph.py                        IMPLEMENTED — OWNERSHIP SLICE
-    └── reconcile_projection.py                 IMPLEMENTED — OWNERSHIP SLICE
+Seed data
+  -> Django ingestion
+  -> PostgreSQL (authoritative)
+  -> Neo4j projection (derived and rebuildable)
+  -> reconciliation
 
-Future management commands:
-└── replay_audit                                 PLANNED
-
-fastapi_service/app/
-  grounding.py
-  schema_registry.py
-  ownership.py
-  pipeline.py
-  guards.py
-  clients/
-  routes/
-
-neo4j/
-  constraints.cypher
+Question
+  -> policy and safety checks
+  -> grounding and exact entity hints
+  -> one local Ollama Text2Cypher planner call
+  -> deterministic guard
+  -> read-only Neo4j
+  -> verified citations
+  -> deterministic final response
+  -> PostgreSQL audit
 ```
 
-| File | Status and responsibility |
-| --- | --- |
-| `registry/models.py` | **Implemented:** schema version in force, ingestion ledger, entity/person/filing registries, and normalized ownership model |
-| `registry/ingestion.py` | **Implemented:** provenance-preserving JSONL ingestion and accounting |
-| `registry/ownership.py` | **Implemented:** first normalized ownership-domain slice |
-| `registry/management/commands/load_seed.py` | **Implemented:** idempotent seed-loading command |
-| `registry/graph_projection.py` | **Implemented for the ownership slice:** rebuilds Neo4j from PostgreSQL and projects legal entities, natural persons, and ownership relationships |
-| `registry/reconciliation.py` | **Implemented for the ownership slice:** read-only PostgreSQL/Neo4j identity and ownership-fact comparison |
-| `registry/audit.py` | **Planned:** immutable query-audit ownership |
-| `project_graph` | **Implemented for the ownership slice:** rebuildable graph-projection management command |
-| `reconcile_projection` | **Implemented for the ownership slice:** reports drift and exits non-zero without repairing it |
-| `replay_audit` | **Planned:** audit-replay management command |
-| `schema_registry.py` | **Implemented for the ownership slice:** loads the authoritative registry and selects the verified runtime query surface |
-| `grounding.py`, `guards.py`, and `pipeline.py` | **Planned:** later FastAPI query-path responsibilities |
+The queryable graph contains `LegalEntity` and `NaturalPerson` nodes with `HOLDS_INTEREST_IN` relationships. Relationships run from a natural person or legal entity to a legal entity and contain `bps`, `valid_from`, `valid_to`, and `filing_uid`.
 
-Using the supplied schema registry as authority, the first ownership mapping is:
+`bps` is an integer: 10,000 bps equals 100 percent. There is no percentage property. Current ownership has `valid_to = null`. Historical ownership uses `valid_from <= as_of` and `(valid_to is null OR as_of <= valid_to)`; the end date is inclusive. Legal entities are identified by `entity_uid`, not legal name; natural persons are identified by `person_uid`.
 
-```text
-IMPLEMENTED IN POSTGRESQL, NEO4J, AND THE SCHEMA ENDPOINT
+## Requirements
 
-NaturalPerson or LegalEntity
-        |
-        | HOLDS_INTEREST_IN
-        | bps
-        | valid_from
-        | valid_to
-        | filing_uid
-        v
-LegalEntity
-```
+- Docker and Docker Compose
+- Enough local RAM and disk for the stack and the local `qwen3:4b` model
 
-### Ownership data flow
+The base setup uses `docker-compose.yml`; no GPU is required. `docker-compose.gpu.yml` is optional local acceleration for an NVIDIA GPU.
 
-```text
-all supplied JSONL
-    ->
-Django ingestion                            IMPLEMENTED
-    ->
-PostgreSQL ledger + provenance              IMPLEMENTED
-    ->
-normalized ownership processing             IMPLEMENTED
-    ->
-ownership graph projection                  IMPLEMENTED
-    ->
-Neo4j derived ownership graph               IMPLEMENTED
-```
+## Quick start
 
-### Projection reconciliation
-
-```text
-PostgreSQL authoritative ownership data
-    ↓ compare
-Neo4j derived ownership projection
-```
-
-`reconcile_projection` compares `LegalEntity` identities, `NaturalPerson` identities, and complete `HOLDS_INTEREST_IN` ownership facts. It is read-only: it reports drift but does not repair or synchronize either database. Manual verification changed one Neo4j relationship's `bps` value without changing the relationship count; reconciliation detected the mismatch, and a later explicit `project_graph` rebuild restored a successful comparison.
-
-All supplied records now participate in ingestion accountability. Only entities, persons, filings, and ownership interests are normalized in this phase.
-
-### Planned ownership query flow
-
-```text
-PLANNED — NOT IMPLEMENTED
-
-ownership question
-    ->
-FastAPI
-    ->
-Weaviate grounding
-    ->
-schema registry
-    ->
-Ollama candidate Cypher
-    ->
-guards
-    ->
-read-only Neo4j
-    ->
-cited ownership result
-    ->
-Django audit
-    ->
-PostgreSQL
-```
-
-## Planned Weaviate design
-
-Weaviate is planned for future entity and question grounding. Its internal vectorization and modules are disabled in the current infrastructure configuration.
-
-The planned local embedding model is `all-MiniLM-L6-v2`, with 384-dimensional embeddings. The same model would generate stored vectors at index time and query vectors for dense retrieval. BM25 would not use embeddings. Planned hybrid retrieval would combine BM25 and dense retrieval with a default alpha of `0.5`.
-
-Embedding generation, indexing, and retrieval are not implemented.
-
-## Run the current scaffold, Django data foundation, and ownership projection
-
-Clone the repository and enter the project directory:
+From a fresh clone:
 
 ```bash
-git clone https://github.com/osamaharrab/Watheeq.git
-cd Watheeq
-```
-
-Create the runtime environment file and start the six services:
-
-```bash
+git clone <repository-url> Watheeq_Osama_Take_Home_Pack
+cd Watheeq_Osama_Take_Home_Pack
 cp .env.example .env
 docker compose up --build -d
-docker compose ps
 ```
 
-The current repository does not yet provide an end-to-end graph-query and AI-answering path.
-
-Apply the checked-in Django migration and run the Django system check:
+Pull the required local model, then check the model list:
 
 ```bash
-docker compose run --rm django python manage.py migrate
-docker compose run --rm django python manage.py check
+docker compose exec -T ollama ollama pull qwen3:4b
+curl -fsS http://localhost:11435/api/tags
 ```
 
-Run the 24 Django data-foundation, graph-projection, reconciliation, and schema-state tests:
-
-```bash
-docker compose run --rm \
-  --volume "$PWD/data:/app/data:ro" \
-  django python manage.py test registry.tests
-```
-
-Run the 8 focused FastAPI schema-registry and endpoint tests:
-
-```bash
-docker compose exec -T fastapi python -m unittest discover -s tests -v
-```
-
-Load the supplied seed data:
-
-```bash
-docker compose run --rm \
-  --volume "$PWD/data:/app/data:ro" \
-  django python manage.py load_seed --source data/graph_seed
-```
-
-`./data` is mounted read-only at `/app/data` because the Django image build context is `django_service/`.
-
-Rebuild the derived Neo4j ownership projection from PostgreSQL:
-
-```bash
-docker compose run --rm django python manage.py project_graph
-```
-
-The manually verified projection contains 24 `LegalEntity` nodes, 10 `NaturalPerson` nodes, and 29 `HOLDS_INTEREST_IN` relationships. Running the command twice returned the same counts both times.
-
-Compare the Neo4j ownership projection with authoritative PostgreSQL data:
-
-```bash
-docker compose exec -T django python manage.py reconcile_projection
-```
-
-The command was manually verified in a matching state, against deliberate same-count ownership drift, and again after rebuilding Neo4j with `project_graph`. It detects and reports drift but does not repair it automatically.
-
-Pull the configured Ollama model into a fresh Ollama volume:
-
-```bash
-docker compose exec ollama ollama pull qwen3:4b
-```
-
-Setting `OLLAMA_MODEL=qwen3:4b` selects the model but does not install it. A fresh environment still needs the pull command above.
-
-Verified model digest:
+Confirm that `qwen3:4b` has digest:
 
 ```text
 359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
 ```
 
-Check the implemented health and readiness surfaces:
+Run the data and projection steps in this order:
 
 ```bash
-curl -fsS http://localhost:8000/health
+docker compose exec -T django python manage.py migrate
+docker compose run --rm --volume "$PWD/data:/app/data:ro" django \
+  python manage.py load_seed --source data/graph_seed
+docker compose exec -T django python manage.py project_graph
+docker compose exec -T django python manage.py reconcile_projection
+docker compose exec -T fastapi python scripts/rebuild_grounding.py
 curl -fsS http://localhost:8000/ready
-curl -fsS http://localhost:8001/health
 curl -fsS http://localhost:8001/ready
-curl -fsS http://localhost:8001/api/v1/schema
-curl -i http://localhost:8080/v1/.well-known/ready
-curl -fsS http://localhost:11435/api/tags
 ```
 
-## Time spent
+The Django service does not mount `data/` by default. The explicit read-only mount in the `load_seed` command is required.
 
-- Target time: 12 hours.
-- Hard cap: 14 hours.
-- Recorded assessment effort: 12 hours.
+## API
 
-| Date                     | Time        | Hours | Work completed |
-| ------------------------ | ----------- | ----: | -------------- |
-| Wednesday, 5 August 2026 | 07:00–10:00 |     3 | Reviewed the assessment, architecture, and project requirements |
-| Wednesday, 5 August 2026 | 17:00–19:00 |     2 | Reviewed the supplied data and schema and defined the implementation plan |
-| Thursday, 6 August 2026  | 09:00–12:00 |     3 | Defined the limited scope, architecture, project structure, service responsibilities, and integration boundaries |
-| Thursday, 6 August 2026  | 12:00–16:00 |     4 | Implemented and verified the Docker Compose scaffold, health/readiness endpoints, and service connectivity |
-| **Total recorded time**  |             | **12 hours** | |
+`/api/v1/ask` currently supports only the `HOLDS_INTEREST_IN` ownership relationship slice. It supports current and structured historical ownership questions, outgoing holdings, and specific holder-to-company relationships. Requests outside that relationship scope are intended to return `unsupported`; the latest evaluation records remaining conservative classification errors.
 
-### Post-submission development — 22 August 2026
+Response statuses are: `answered` for verified ownership facts; `unsupported` for understood requests outside this slice; `abstained` for ownership requests that cannot be safely grounded, represented, or proved; `refused` for prohibited or unsafe requests; and `unavailable` when a required local dependency is unavailable.
 
-Approximately 6 hours were spent implementing, reviewing, and manually verifying the Django/PostgreSQL data foundation. This was later continuation work and is not included in the original timed assessment total of 12 hours.
+```bash
+curl -fsS http://localhost:8001/health | python -m json.tool
+curl -fsS http://localhost:8001/ready | python -m json.tool
+curl -fsS http://localhost:8001/api/v1/schema | python -m json.tool
 
-### Post-submission development — 24 August 2026
+curl -fsS -X POST http://localhost:8001/api/v1/entities/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Aqaba Logistics Park Company"}' | python -m json.tool
 
-Approximately 7 hours were spent implementing and verifying the PostgreSQL-to-Neo4j ownership projection and reconciliation, including `project_graph`, Neo4j constraints, graph-projection tests, `reconcile_projection`, and deliberate drift detection. These 7 hours are post-submission continuation work and are not included in the original timed assessment total of 12 hours.
+curl -fsS -X POST http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Who holds interests in LE-005?"}' | python -m json.tool
+
+curl -fsS -X POST http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Which entities does NP-003 hold interests in?"}' | python -m json.tool
+
+curl -fsS -X POST http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Does NP-003 hold an interest in LE-006?"}' | python -m json.tool
+
+curl -fsS -X POST http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Who held interests in LE-005?","as_of":"2025-09-13"}' | python -m json.tool
+
+curl -fsS -X POST http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"List all company names."}' | python -m json.tool
+
+curl -fsS http://localhost:8000/api/v1/audit/<REQUEST_ID> | python -m json.tool
+```
+
+`/health` reports process liveness. `/ready` also checks the required local dependencies and the pinned Ollama model. `/api/v1/ask` returns its audit request ID in the `X-Request-ID` response header.
+
+## Tests
+
+```bash
+docker compose run --rm --volume "$PWD/data:/app/data:ro" django \
+  python manage.py test registry
+docker compose exec -T fastapi python -m unittest discover -s tests
+```
+
+The Django command needs the same read-only seed-data mount. The latest developer-verified results were 42 Django tests passed and 61 FastAPI tests passed. Results may vary in a different environment.
+
+## Evaluation
+
+```bash
+python scripts/run_eval.py
+```
+
+The harness posts 48 questions to `/api/v1/ask`, checks the expected outcome, validates citations independently, and checks that audit records were written. It keeps failures in the generated report.
+
+The latest report records 21/48 passed outcome/citation/audit checks and 27 failures. Audit records were found for all 48 questions, and the unsupported assertion count was 0. No evaluation responses were scored as answered. Several failures were conservative abstentions or `unsupported` versus `abstained` classification mismatches; five evaluation requests returned `unavailable` because a required local dependency/runtime was unavailable. See [EVAL_REPORT.md](EVAL_REPORT.md) for the taxonomy and full results.
+
+## Known limitations
+
+- The queryable graph is intentionally limited to the ownership slice.
+- Global ownership arithmetic and completeness assertions are intentionally not implemented.
+- The local planner can be over-conservative: some supported ownership formulations abstain, and `unsupported` versus `abstained` classification is not yet perfect.
+- Local model and dependency availability can affect latency and evaluation runs.
+
+## Actual hours
+
+Total actual development time: **43 hours**.
+
+| Date | Time | Hours | Work completed |
+| --- | --- | ---: | --- |
+| 5 August 2026 | 07:00–10:00 | 3 | Reviewed the assessment, architecture, and project requirements |
+| 5 August 2026 | 17:00–19:00 | 2 | Reviewed the supplied data and schema and defined the implementation plan |
+| 6 August 2026 | 09:00–12:00 | 3 | Defined the project scope, architecture, structure, service responsibilities, and integration boundaries |
+| 6 August 2026 | 12:00–16:00 | 4 | Implemented and verified the Docker Compose scaffold, health/readiness endpoints, and service connectivity |
+| 22 August 2026 | — | 6 | Implemented, reviewed, and manually verified the Django/PostgreSQL data foundation |
+| 24 August 2026 | — | 7 | Implemented and verified the PostgreSQL-to-Neo4j ownership projection, reconciliation, constraints, projection tests, and deliberate drift detection |
+| 26 August 2026 | — | 4 | Continued implementation, debugging, and verification of the ownership query pipeline |
+| 27 August 2026 | — | 6 | Worked on grounding, guarded query behaviour, evaluation fixes, testing, and verification |
+| 28 August 2026 | — | 5 | Completed final correctness fixes, evaluation, repository cleanup, code comments, and submission documentation |
+| 29 August 2026 | — | 3 | Final ownership-query validation, regression testing, evaluation review, and final documentation consistency work |
+| **Total** |  | **43 hours** |  |
+
+The recorded time covers the full development history represented in this repository, including implementation, debugging, testing, evaluation, verification, cleanup, and documentation.
