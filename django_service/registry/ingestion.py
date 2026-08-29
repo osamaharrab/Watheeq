@@ -1,3 +1,4 @@
+"""Load JSONL seed records into PostgreSQL with complete line-level provenance."""
 import json
 from datetime import date, datetime
 from pathlib import Path
@@ -157,6 +158,7 @@ def _ingest_line(
         return IngestionRecord.Status.REJECTED, reason
 
     with transaction.atomic():
+        # Create the ledger row first so accepted and failed input remain auditable.
         ingestion_record = IngestionRecord.objects.create(
             source_file=source_file,
             line_number=line_number,
@@ -167,6 +169,7 @@ def _ingest_line(
         )
 
         try:
+            # Only the supported ownership slice is normalized into business tables.
             coercions = _normalize_record(source_file, payload, ingestion_record)
         except (RejectedRecord, OwnershipDataError) as exc:
             ingestion_record.status = IngestionRecord.Status.REJECTED

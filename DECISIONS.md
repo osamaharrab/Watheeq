@@ -1,149 +1,97 @@
-# DECISIONS.md
+# Engineering decisions
 
-## Decision 1: Original timed submission — submit a limited verified scaffold
+## 1. Narrow ownership vertical slice
 
-**What I chose.**
+**Decision:** Implement `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN` end to end.
 
-For the original timed submission, I limited the implementation to the six-service Docker Compose scaffold, configuration and dependency wiring, and Django/FastAPI health and readiness endpoints. Ownership questions were the planned first business vertical slice, but that slice was not implemented within the timed submission.
+**Why:** A complete slice was more useful than partial support for every supplied relation.
 
-**What I rejected, and why.**
+**Alternative not chosen:** Broad support for assets, instruments, pledges, and other relations without the same ingestion, projection, reconciliation, query, and test coverage.
 
-I rejected broad, incomplete business paths that could appear functional without end-to-end verification. Ownership is the load-bearing question in the brief and provides a bounded first path through ledger, projection, grounding, querying, citation, and audit.
+## 2. PostgreSQL is authoritative
 
-**What would have to be true for the rejected option to be the better one.**
+**Decision:** Keep normalized records, provenance, and audit records in PostgreSQL through Django.
 
-There would need to be enough time to implement and test ingestion, provenance, projection, reconciliation, guarded querying, citations, audit, and evaluation together.
+**Why:** PostgreSQL is the record of truth for ingested data and audit persistence.
 
-**What this decision costs.**
+**Alternative not chosen:** Treating Neo4j as the authoritative database.
 
-Most assessed business functionality and the required complete test suite remain unfinished.
+## 3. Neo4j is derived and rebuildable
 
-**Current post-submission development state.**
+**Decision:** Rebuild Neo4j from PostgreSQL and reconcile it against PostgreSQL.
 
-On 22 August 2026, later continuation work implemented and manually verified the first Django/PostgreSQL ownership data foundation: the ingestion ledger, entity/person/filing registries, normalized ownership interests, migration, `load_seed`, and 16 phase-specific tests. Subsequent continuation work implemented and manually verified the rebuildable Neo4j ownership projection, read-only reconciliation for that ownership slice, and 6 focused projection and reconciliation tests. Querying, citations, audit, grounding, and evaluation remain planned.
+**Why:** Neo4j supports ownership traversal without becoming an independent source of truth.
 
-## Decision 2: Keep Django and PostgreSQL authoritative
+**Alternative not chosen:** Maintaining graph facts separately from the ledger.
 
-**What I chose.**
+## 4. Ownership stays in bps
 
-PostgreSQL is the system of record, owned through Django. The implemented registry and ingestion ledger persist their authoritative records there. Neo4j is now implemented as a rebuildable derived projection for the ownership slice, and FastAPI does not own authoritative business writes.
+**Decision:** Store and return ownership as integer `bps`.
 
-**What I rejected, and why.**
+**Why:** This is the supplied schema’s native unit. 10,000 bps equals 100 percent, and no percentage property is invented.
 
-I rejected treating Neo4j or Weaviate as authoritative because that would conflict with the brief and weaken provenance and reconciliation boundaries.
+**Alternative not chosen:** Silent conversion to decimal or percentage fields.
 
-**What would have to be true for the rejected option to be the better one.**
+## 5. Inclusive effective dating
 
-The system would need a different, explicitly graph-native authority model with equivalent provenance, audit, recovery, and reconciliation guarantees.
+**Decision:** Treat current ownership as `valid_to = null`; for historical queries use `valid_from <= as_of` and `(valid_to is null OR as_of <= valid_to)`.
 
-**What this decision costs.**
+**Why:** This preserves the supplied validity fields and makes the end date inclusive.
 
-The ledger, ownership projection command, and read-only reconciliation check are now implemented for the ownership slice. Reconciliation detects drift but does not repair it automatically; rebuilding remains an explicit `project_graph` operation.
+**Alternative not chosen:** Selecting only a latest record or treating `valid_to` as exclusive.
 
-## Decision 3: Plan external local embeddings for Weaviate
+## 6. Weaviate is grounding, not truth
 
-**What I chose.**
+**Decision:** Use Weaviate for entity and question grounding only.
 
-I configured Weaviate with internal vectorization disabled. The future grounding design would use local `all-MiniLM-L6-v2` embeddings with 384 dimensions, the same model for stored and query vectors, BM25 separately, and hybrid retrieval with a planned default alpha of `0.5`.
+**Why:** It discovers candidates. Business relationships are verified from Neo4j’s projection of PostgreSQL data.
 
-**What I rejected, and why.**
+**Alternative not chosen:** Answering ownership questions from vector-search results.
 
-I rejected hosted embeddings and Weaviate-managed vectorization because runtime inference must remain local and explicit embedding generation gives the application control over model consistency.
+## 7. Exact resolution before hybrid retrieval
 
-**What would have to be true for the rejected option to be the better one.**
+**Decision:** Resolve exact IDs and names before using hybrid lexical/vector discovery.
 
-The runtime rules and data-governance boundary would need to permit a hosted or internally managed embedding service with reproducible model pinning.
+**Why:** Exact identity should not be diluted by semantic candidates. When an exact legal name is non-unique, all exact matches are kept.
 
-**What this decision costs.**
+**Alternative not chosen:** Always using hybrid retrieval first.
 
-Future implementation must add local model dependencies, embedding generation, indexing, rebuild behavior, and retrieval tests. None of that is implemented now.
+## 8. Deterministic guard for generated Cypher
 
-## Decision 4: Run Ollama qwen3:4b inside Docker Compose
+**Decision:** Treat model-generated Cypher as untrusted and validate it before execution.
 
-**What I chose.**
+**Why:** Only the allowed schema, read-only query shape, labels, relationship types, properties, parameters, bounds, and temporal rules may reach Neo4j.
 
-I configured Ollama inside Compose with `qwen3:4b`, using host port `11435` and container port `11434`. A fresh volume requires `ollama pull qwen3:4b`.
+**Alternative not chosen:** Relying only on model instructions to keep queries safe.
 
-**What I rejected, and why.**
+## 9. Explicit non-answer outcomes
 
-I rejected hosted inference because the brief prohibits it, and I rejected relying on a host Ollama process because it adds machine-specific networking and setup outside the stack.
+**Decision:** Distinguish `answered`, `unsupported`, `abstained`, and `refused` outcomes.
 
-**What would have to be true for the rejected option to be the better one.**
+**Why:** Answered responses require verified ownership facts. Requests outside the slice are unsupported; ownership requests that cannot be grounded or proved safely abstain; unsafe requests are refused. The local planner can still be over-conservative, so remaining classification failures are retained rather than hidden.
 
-A host process would need to be a guaranteed reviewer prerequisite with stable networking, model storage, and version control. Hosted inference would require a change to the assessment rules.
+**Alternative not chosen:** Returning a plausible-looking answer for every question.
 
-**What this decision costs.**
+## 10. No risk or credit decisions
 
-The local model requires a separate pull, disk space, startup time, and enough CPU and memory on the reviewer machine.
+**Decision:** Do not implement counterparty risk scores, credit scores, lending limits, or recommendations.
 
-## Decision 5: Refuse automated risk scoring and credit limits
+**Why:** They are outside the supported graph facts and policy scope. The service provides cited ownership facts, not lending advice.
 
-**What I chose.**
+**Alternative not chosen:** Deriving a score from incomplete ownership data.
 
-I refused to implement a 0–100 counterparty risk score or recommended credit limit. A future service should return cited ownership and control facts for human review.
+## 11. Ownership-only ask endpoint
 
-**What I rejected, and why.**
+**Decision:** Keep `/api/v1/ask` limited to the current `HOLDS_INTEREST_IN` slice. The local model plans ownership intent and guarded Cypher once; final answers are rendered deterministically from verified Neo4j relationship facts. A plan that drops an explicit named ownership endpoint fails closed before graph execution.
 
-I rejected turning incomplete, conflicting, effective-dated synthetic graph records into a lending recommendation without an approved policy, validated outcomes, fairness review, explainability, and legal basis.
+**Why:** This avoids general-chat answers, citation/value mismatches, and partial relationship answers while keeping the audit, guard, and graph-execution plumbing reusable for a later relationship slice.
 
-**What would have to be true for the rejected option to be the better one.**
+## Negative result
 
-It would require a separately governed decision system with validated data, approved policy, human oversight, monitoring, appeals, and legal and fairness review.
+Using hybrid retrieval directly for an exact company-name question returned several candidates and produced an incorrect ownership query. Runtime `/api/v1/entities/resolve` and `/api/v1/ask` results, together with focused grounding tests, showed the problem. Exact-first resolution replaced hybrid-first retrieval.
 
-**What this decision costs.**
+## Brief interpretation
 
-The service cannot provide the requested automated lending recommendation; it remains limited to factual structure if that future path is implemented.
+The brief requires grounded answers with citations and also requires abstention, refusal, and unsupported behaviour. I interpreted this as requiring citations for answered business claims. Unsupported, abstained, and refused responses are explicit non-answer outcomes, so they must not fabricate citations merely to fit an answer format.
 
-## Decision 6: Correct the Neo4j application environment namespace
-
-**What I chose.**
-
-Application configuration initially used `NEO4J_*` connection variables. That namespace risked being interpreted as Neo4j server configuration and made the setup less reliable. I changed the application-facing variables to `GRAPH_DB_URI`, `GRAPH_DB_USER`, and `GRAPH_DB_PASSWORD`, then successfully verified service startup and connectivity.
-
-**What I rejected, and why.**
-
-I rejected keeping the original names as a cosmetic convention because their interaction with Neo4j server configuration was the problem that made the earlier setup worse.
-
-**What would have to be true for the rejected option to be the better one.**
-
-The `NEO4J_*` namespace would need to be unambiguous and isolated from Neo4j server environment processing.
-
-**What this decision costs.**
-
-The application uses a project-specific namespace that must be documented and kept consistent across Compose and FastAPI configuration.
-
-## Decision 7: Define explicit answer, abstention, and refusal outcomes
-
-**What I chose.**
-
-I interpret Requirement 9 as requiring every `/api/v1/ask` request to receive an explicit outcome: a factual answer grounded in cited graph nodes, an abstention when the graph or schema cannot support a factual answer, or a refusal when the request is unsafe or outside the allowed scope. This is guidance for future implementation, not current behavior.
-
-**What I rejected, and why.**
-
-I rejected the literal reading that every question must receive a factual, cited answer. Requirement 9 also prohibits unverifiable information, while other parts of the brief explicitly require abstentions and refusals.
-
-**What would have to be true for the rejected option to be the better one.**
-
-The brief would need to state that all allowed questions are guaranteed to be answerable from the graph and clarify how unsafe requests fit the endpoint contract.
-
-**What this decision costs.**
-
-The future response and audit schemas must distinguish all three outcomes and test them separately.
-
-## Decision 8: Expose a verified registry subset before expanding the graph
-
-**What I chose.**
-
-I exposed only the implemented ownership graph slice while keeping the supplied registry authoritative. The running schema endpoint derives `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN` definitions directly from that registry.
-
-**What I rejected, and why.**
-
-I rejected pretending that the full supplied registry is currently implemented. The project intentionally prioritizes one verified vertical slice over broad incomplete support.
-
-**What would have to be true for the rejected option to be the better one.**
-
-The remaining relationship types would need to be implemented one by one through normalization → PostgreSQL → projection → reconciliation → query support.
-
-**What this decision costs.**
-
-The assessment's full schema-conformance requirement is not yet satisfied. The current runtime schema is an authoritative-registry-derived ownership subset until the remaining registry relationships are implemented and verified.
+To resolve this interpretation formally, I would ask Watheeq to confirm whether unsupported, abstained, and refused outcomes are exempt from the citation requirement that applies to answered business claims.

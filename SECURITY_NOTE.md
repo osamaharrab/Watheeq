@@ -1,33 +1,31 @@
-# SECURITY_NOTE.md
+# Security note
 
 ## Trust boundaries
 
-The submitted runtime services are local and Docker-based; no hosted LLM runtime API is required. Checked-in application code and infrastructure configuration define the current scaffold. `.env` is ignored, while `.env.example` contains development placeholders.
+Trusted inputs are the supplied schema/registry configuration and PostgreSQL source records after ingestion validation. PostgreSQL is authoritative. Neo4j is a derived, rebuildable projection, and Weaviate is a grounding index rather than business truth.
 
-The supplied schema registry is the planned authority for the future queryable surface. Supplied JSONL data, graph properties, user questions, model output, and generated Cypher are untrusted. Seed ingestion is implemented in Django. The current Neo4j projection writes only `LegalEntity`, `NaturalPerson`, and `HOLDS_INTEREST_IN` data from authoritative PostgreSQL records; vector indexing and graph querying remain unimplemented.
+Untrusted inputs include user questions, client headers and request bodies, model-generated Cypher, and text retrieved from Weaviate or Neo4j. Retrieved graph text is data, not an instruction for the model or query path.
 
-## Untrusted content handling
+## Implemented controls
 
-Seed ingestion decodes and parses each physical JSONL line, preserves its raw payload and source provenance, and normalizes only the supported registry fields. Unsupported fields remain in the raw ledger instead of expanding the authoritative model. Hostile or prompt-like text remains inert business data. The only non-ISO coercion is the narrow fixture-backed `DD/MM/YYYY` conversion for `LE-023`; other unsafe or unresolved records are rejected or quarantined with reasons.
+- Credentials are supplied through environment variables. `GRAPH_DB_PASSWORD` has no Python fallback.
+- FastAPI request models validate shape and reject unknown fields. A middleware enforces an 8,192-byte request-body limit, including when `Content-Length` is missing or false.
+- Generated Cypher is treated as untrusted. The deterministic guard allows only the registered node labels, `HOLDS_INTEREST_IN`, registered properties, known aliases, and the approved parameters.
+- The guard requires a read-only `MATCH`/`RETURN` query with deterministic ordering, one literal limit, bounded traversal, and the required current or inclusive historical date rules. Write, destructive, schema-bypass, and unsupported requests are refused before execution.
+- Neo4j query sessions use read access. Queries are parameterized, have a three-second timeout, a maximum depth of four, and a maximum of 100 returned rows.
+- The local model plans Cypher once and does not write final business answers. Citations and deterministic responses are built from verified graph facts. Each `/api/v1/ask` outcome is written to the immutable PostgreSQL audit trail; audit failure fails the request closed.
+- `/health` checks process liveness. `/ready` additionally checks Django, Neo4j, Weaviate, and the required Ollama model and digest.
 
-Text later retrieved from a graph must still be treated as untrusted data and never as model instructions. Model prompting, Text2Cypher, deterministic schema and write guards, depth/result/time bounds, read-only query credential separation, citations, and query audit persistence are not implemented.
+## Three attacks or abuses defeated
 
-## Payload and output integrity
+1. **Graph write attempt:** A question asking to create, delete, or alter graph data is refused. Generated Cypher with write clauses also fails the deterministic guard and does not run.
+2. **Schema-bypass or property-enumeration attempt:** The guard rejects unknown labels, relationships, aliases, properties, and parameters, so generated Cypher cannot inspect arbitrary graph fields.
+3. **Oversized request:** Requests over 8,192 bytes receive HTTP 413 even if the caller omits or lies about `Content-Length`.
 
-The implemented health and readiness endpoints accept no business payload and report service or dependency status. Seed ingestion, ownership projection, and projection reconciliation are local Django management-command paths, not public HTTP endpoints. The current ownership projection is derived from authoritative PostgreSQL data. `reconcile_projection` performs a read-only comparison and can detect divergence in entity identities, person identities, and ownership facts; it does not repair or synchronize drift automatically. Weaviate built-in vectorization and modules are disabled with `DEFAULT_VECTORIZER_MODULE: none` and `ENABLE_MODULES: ""`.
+## A control not fully implemented
 
-There is currently no authentication or authorization layer, so authenticated and unauthenticated callers have no different permissions. The only implemented HTTP surfaces are health and readiness endpoints. Before handling real counterparty data, I would add authenticated access, role-based authorization, restricted ledger and audit access, private service networking, TLS, rate limiting, and separate least-privilege service credentials.
+The current local assessment setup has no authenticated caller role, so authenticated and unauthenticated callers do not have different application-level access.
 
-FastAPI business payload validation, authentication, authorization, model prompting, Text2Cypher validation, Cypher guards, query bounds, separate read-only Neo4j query credentials, citation enforcement, and query audit persistence are not implemented.
+There is no caller authentication or service-to-service authentication in this local assessment setup. In particular, the Django internal audit endpoint accepts valid-shaped requests without a dedicated service credential. A party able to reach that endpoint could create new audit records, although existing immutable records cannot be changed through the application.
 
-Before Django ran anywhere other than a developer laptop, I would set `DEBUG=False`, use an externally managed `SECRET_KEY`, restrict `ALLOWED_HOSTS`, use production PostgreSQL credentials, configure HTTPS-aware proxy settings, secure session and CSRF cookies, define trusted CSRF origins, enable production logging, and restrict access to ledger and audit endpoints. The current settings remain development-only.
-
-## Three failure modes currently mitigated
-At the current implementation stage, these are configuration-level protections against specific failure modes, not complete adversarial security guarantees.
-1. **Data exfiltration to a hosted LLM provider through an inference API.** The runtime uses only the local Ollama service defined in Docker Compose and makes no hosted LLM API calls.
-2. **Accidental secret disclosure through an ordinary commit.** `.gitignore` excludes `.env`, while the tracked `.env.example` contains only placeholder development values.
-3. **Unintended use of a default or untrusted embedding model.** Weaviate built-in vectorization is disabled with `DEFAULT_VECTORIZER_MODULE: none` and `ENABLE_MODULES: ""`.
-
-## One attack this design does not defeat
-
-A hostile caller to future business or query endpoints is not currently controlled. Authentication, authorization, payload validation, prompt-injection handling, deterministic Cypher guards, bounded graph execution, citation enforcement, and audit persistence would all be required before exposing those endpoints.
+Before handling real counterparty data, I would add caller authentication and authorization, service-to-service authentication for audit writes, network restrictions for internal endpoints, TLS, protected secret management, `DEBUG=0`, a strong external Django secret key, restricted allowed hosts, and non-development database credentials.

@@ -72,6 +72,16 @@ class ProjectionReconciliationTests(TestCase):
 
     @patch.dict("os.environ", GRAPH_ENVIRONMENT)
     @patch("registry.reconciliation.GraphDatabase.driver")
+    def test_projected_dates_and_nulls_reconcile_when_semantically_equal(self, driver_factory):
+        self._neo4j_results(driver_factory)
+
+        result = reconcile_projection()
+
+        self.assertTrue(result["LegalEntity"]["matches"])
+        self.assertTrue(result["NaturalPerson"]["matches"])
+
+    @patch.dict("os.environ", GRAPH_ENVIRONMENT)
+    @patch("registry.reconciliation.GraphDatabase.driver")
     def test_missing_entity_and_extra_entity_are_detected(self, driver_factory):
         self._neo4j_results(
             driver_factory,
@@ -116,14 +126,44 @@ class ProjectionReconciliationTests(TestCase):
         self.assertEqual(len(relationship_result["missing_relationships"]), 1)
         self.assertEqual(len(relationship_result["extra_relationships"]), 1)
 
+    @patch.dict("os.environ", GRAPH_ENVIRONMENT)
+    @patch("registry.reconciliation.GraphDatabase.driver")
+    def test_legal_entity_property_drift_fails_with_matching_uids(self, driver_factory):
+        entity_rows = self._entity_rows()
+        entity_rows[0]["status"] = "Inactive"
+        self._neo4j_results(driver_factory, entity_rows=entity_rows)
+
+        result = reconcile_projection()
+
+        self.assertFalse(result["reconciled"])
+        self.assertFalse(result["LegalEntity"]["matches"])
+        self.assertEqual(result["LegalEntity"]["property_mismatches"], ["LE-HELD"])
+
+    @patch.dict("os.environ", GRAPH_ENVIRONMENT)
+    @patch("registry.reconciliation.GraphDatabase.driver")
+    def test_natural_person_property_drift_fails_with_matching_uids(self, driver_factory):
+        person_rows = self._person_rows()
+        person_rows[0]["nationality"] = "GB"
+        self._neo4j_results(driver_factory, person_rows=person_rows)
+
+        result = reconcile_projection()
+
+        self.assertFalse(result["reconciled"])
+        self.assertFalse(result["NaturalPerson"]["matches"])
+        self.assertEqual(result["NaturalPerson"]["property_mismatches"], ["NP-HOLDER"])
+
     def _neo4j_results(
         self,
         driver_factory,
         entity_uids=None,
+        entity_rows=None,
+        person_rows=None,
         ownership_rows=None,
     ):
-        if entity_uids is None:
-            entity_uids = ["LE-HELD", "LE-HOLDER"]
+        if entity_rows is None:
+            entity_rows = self._entity_rows(entity_uids)
+        if person_rows is None:
+            person_rows = self._person_rows()
         if ownership_rows is None:
             ownership_rows = self._ownership_rows()
 
@@ -131,9 +171,38 @@ class ProjectionReconciliationTests(TestCase):
         session = MagicMock()
         driver.session.return_value.__enter__.return_value = session
         session.run.side_effect = [
-            [{"entity_uid": uid} for uid in entity_uids],
-            [{"person_uid": "NP-HOLDER"}],
+            entity_rows,
+            person_rows,
             ownership_rows,
+        ]
+
+    def _entity_rows(self, entity_uids=None):
+        entities = {
+            entity.entity_uid: {
+                "entity_uid": entity.entity_uid,
+                "legal_name": entity.legal_name,
+                "legal_name_ar": entity.legal_name_ar,
+                "jurisdiction": entity.jurisdiction,
+                "registration_no": entity.registration_no,
+                "incorporation_date": entity.incorporation_date.isoformat(),
+                "status": entity.status,
+                "status_as_of": entity.status_as_of.isoformat(),
+            }
+            for entity in (self.held_entity, self.holder_entity)
+        }
+        if entity_uids is None:
+            entity_uids = ["LE-HELD", "LE-HOLDER"]
+        return [entities.get(uid, {"entity_uid": uid}) for uid in entity_uids]
+
+    def _person_rows(self):
+        return [
+            {
+                "person_uid": self.holder_person.person_uid,
+                "full_name": self.holder_person.full_name,
+                "full_name_ar": self.holder_person.full_name_ar,
+                "nationality": self.holder_person.nationality,
+                "dob_year": self.holder_person.dob_year,
+            }
         ]
 
     def _ownership_rows(self):

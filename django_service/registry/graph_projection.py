@@ -1,3 +1,4 @@
+"""Rebuild the Neo4j ownership projection from authoritative PostgreSQL rows."""
 import os
 
 from neo4j import GraphDatabase
@@ -18,6 +19,7 @@ FOR (person:NaturalPerson) REQUIRE person.person_uid IS UNIQUE
 
 # Rebuilds the ownership graph from the authoritative PostgreSQL records.
 def project_graph():
+    # Neo4j is derived data, so rebuilding starts by replacing its projected contents.
     driver = GraphDatabase.driver(
         os.environ["GRAPH_DB_URI"],
         auth=(
@@ -28,6 +30,7 @@ def project_graph():
 
     with driver:
         with driver.session() as session:
+            # This command owns projection writes; FastAPI graph queries are read-only.
             session.run("MATCH (n) DETACH DELETE n")
             session.run(LEGAL_ENTITY_CONSTRAINT)
             session.run(NATURAL_PERSON_CONSTRAINT)
@@ -45,6 +48,7 @@ def project_graph():
 
 # Creates LegalEntity nodes with only schema-supported properties.
 def _project_legal_entities(session):
+    """Project the LegalEntity properties exposed by the ownership graph slice."""
     count = 0
 
     for entity in LegalEntity.objects.all():
@@ -77,6 +81,7 @@ def _project_legal_entities(session):
 
 # Creates NaturalPerson nodes with only schema-supported properties.
 def _project_natural_persons(session):
+    """Project the NaturalPerson properties exposed by the ownership graph slice."""
     count = 0
 
     for person in NaturalPerson.objects.all():
@@ -106,6 +111,7 @@ def _project_ownership_interests(session):
     count = 0
 
     for interest in OwnershipInterest.objects.all():
+        # Keep bps and effective dates unchanged so Neo4j matches PostgreSQL facts.
         relationship_properties = {
             "bps": interest.bps,
             "valid_from": interest.valid_from,

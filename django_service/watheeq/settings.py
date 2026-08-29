@@ -1,8 +1,10 @@
+"""Django settings for the PostgreSQL-backed system of record."""
 import os
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Secrets and database credentials are supplied by the local runtime environment.
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [
@@ -21,6 +23,7 @@ ROOT_URLCONF = "watheeq.urls"
 TEMPLATES = []
 WSGI_APPLICATION = "watheeq.wsgi.application"
 
+# PostgreSQL is authoritative; Neo4j and Weaviate never replace this database.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",

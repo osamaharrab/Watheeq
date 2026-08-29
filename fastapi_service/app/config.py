@@ -1,29 +1,40 @@
-"""Environment configuration for the FastAPI query service."""
+"""Central runtime configuration."""
+from functools import lru_cache
 
-import os
-from dataclasses import dataclass
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass(frozen=True)
-class Settings:
-    django_base_url: str
-    graph_db_uri: str
-    graph_db_user: str
+DEFAULT_MAX_QUESTION_CHARS = 2000
+
+
+class Settings(BaseSettings):
+    """Loads the small set of local-service settings used by the query slice."""
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    django_base_url: str = "http://django:8000"
+    graph_db_uri: str = "bolt://neo4j:7687"
+    graph_db_user: str = "neo4j"
+    # Neo4j credentials must come from the environment, never from source defaults.
     graph_db_password: str
-    weaviate_url: str
-    ollama_url: str
-    ollama_model: str
-    ollama_model_digest: str
+    weaviate_url: str = "http://weaviate:8080"
+    ollama_url: str = "http://ollama:11434"
+    ollama_model: str = "qwen3:4b"
+    ollama_model_digest: str = "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7"
+    ollama_timeout_seconds: int = 120
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
+    grounding_alpha: float = 0.5
+    grounding_top_k: int = 5
+    max_query_depth: int = 4
+    max_query_results: int = 100
+    query_timeout_seconds: int = 3
+    max_question_chars: int = DEFAULT_MAX_QUESTION_CHARS
+    max_request_body_bytes: int = 8192
+    ollama_seed: int = 7
+    ollama_max_tokens: int = 500
 
 
+@lru_cache
 def get_settings() -> Settings:
-    return Settings(
-        django_base_url=os.environ["DJANGO_BASE_URL"],
-        graph_db_uri=os.environ["GRAPH_DB_URI"],
-        graph_db_user=os.environ["GRAPH_DB_USER"],
-        graph_db_password=os.environ["GRAPH_DB_PASSWORD"],
-        weaviate_url=os.environ["WEAVIATE_URL"],
-        ollama_url=os.environ["OLLAMA_URL"],
-        ollama_model=os.environ["OLLAMA_MODEL"],
-        ollama_model_digest=os.environ["OLLAMA_MODEL_DIGEST"],
-    )
+    """Reuse one validated settings object for the FastAPI process."""
+    return Settings()

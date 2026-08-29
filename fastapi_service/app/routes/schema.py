@@ -1,3 +1,4 @@
+"""Expose the registry-derived ownership schema available to FastAPI queries."""
 from fastapi import APIRouter
 
 from app.schema_registry import get_queryable_schema
@@ -9,4 +10,5 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/schema", response_model=SchemaResponse)
 def schema() -> SchemaResponse:
+    # Returns the strict runtime subset, not the unimplemented target graph.
     return SchemaResponse(**get_queryable_schema())
