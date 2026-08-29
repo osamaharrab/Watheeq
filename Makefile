@@ -17,7 +17,7 @@ help:
 	@echo "  make django-check   Run Django system checks"
 	@echo "  make check          Run project configuration checks"
 	@echo "  make model-list     List models installed inside Ollama"
-	@echo "  make model-pull     Pull qwen3:4b inside the Ollama container"
+	@echo "  make model-pull     Pull qwen2.5-coder:7b inside the Ollama container"
 	@echo "  make django-shell   Open a Django shell"
 	@echo "  make status         Show Git working-tree status"
 
@@ -74,7 +74,7 @@ model-list:
 	docker compose exec -T ollama ollama list
 
 model-pull:
-	docker compose exec ollama ollama pull qwen3:4b
+	docker compose exec ollama ollama pull qwen2.5-coder:7b
 
 django-shell:
 	docker compose exec django python manage.py shell

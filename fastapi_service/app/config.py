@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     graph_db_password: str
     weaviate_url: str = "http://weaviate:8080"
     ollama_url: str = "http://ollama:11434"
-    ollama_model: str = "qwen3:4b"
-    ollama_model_digest: str = "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7"
+    ollama_model: str = "qwen2.5-coder:7b"
+    ollama_model_digest: str = "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
     ollama_timeout_seconds: int = 120
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
