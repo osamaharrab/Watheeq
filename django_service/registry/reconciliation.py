@@ -1,3 +1,4 @@
+"""Compare the rebuildable Neo4j ownership projection with PostgreSQL truth."""
 import os
 from collections import Counter
 
@@ -8,18 +9,9 @@ from registry.models import LegalEntity, NaturalPerson, OwnershipInterest
 
 # Compares the derived ownership graph with authoritative PostgreSQL records.
 def reconcile_projection():
-    expected_entity_uids = list(
-        LegalEntity.objects.order_by("entity_uid").values_list(
-            "entity_uid",
-            flat=True,
-        )
-    )
-    expected_person_uids = list(
-        NaturalPerson.objects.order_by("person_uid").values_list(
-            "person_uid",
-            flat=True,
-        )
-    )
+    # Compare projected nodes and ownership edges independently before deciding success.
+    expected_entities = _expected_legal_entities()
+    expected_persons = _expected_natural_persons()
     expected_ownership = _expected_ownership_relationships()
 
     driver = GraphDatabase.driver(
@@ -32,36 +24,12 @@ def reconcile_projection():
 
     with driver:
         with driver.session() as session:
-            actual_entity_uids = [
-                record["entity_uid"]
-                for record in session.run(
-                    """
-                    MATCH (entity:LegalEntity)
-                    RETURN entity.entity_uid AS entity_uid
-                    ORDER BY entity_uid
-                    """
-                )
-            ]
-            actual_person_uids = [
-                record["person_uid"]
-                for record in session.run(
-                    """
-                    MATCH (person:NaturalPerson)
-                    RETURN person.person_uid AS person_uid
-                    ORDER BY person_uid
-                    """
-                )
-            ]
+            actual_entities = _actual_legal_entities(session)
+            actual_persons = _actual_natural_persons(session)
             actual_ownership = _actual_ownership_relationships(session)
 
-    entity_result = _identity_result(
-        expected_entity_uids,
-        actual_entity_uids,
-    )
-    person_result = _identity_result(
-        expected_person_uids,
-        actual_person_uids,
-    )
+    entity_result = _node_result(expected_entities, actual_entities, "entity_uid")
+    person_result = _node_result(expected_persons, actual_persons, "person_uid")
     ownership_result = _ownership_result(
         expected_ownership,
         actual_ownership,
@@ -77,6 +45,81 @@ def reconcile_projection():
         "NaturalPerson": person_result,
         "HOLDS_INTEREST_IN": ownership_result,
     }
+
+
+def _expected_legal_entities():
+    """Read every LegalEntity property written by the graph projection."""
+    return [
+        {
+            "entity_uid": entity.entity_uid,
+            "legal_name": entity.legal_name,
+            "legal_name_ar": entity.legal_name_ar,
+            "jurisdiction": entity.jurisdiction,
+            "registration_no": entity.registration_no,
+            "incorporation_date": _comparison_value(entity.incorporation_date),
+            "status": entity.status,
+            "status_as_of": _comparison_value(entity.status_as_of),
+        }
+        for entity in LegalEntity.objects.order_by("entity_uid")
+    ]
+
+
+def _expected_natural_persons():
+    """Read every NaturalPerson property written by the graph projection."""
+    return [
+        {
+            "person_uid": person.person_uid,
+            "full_name": person.full_name,
+            "full_name_ar": person.full_name_ar,
+            "nationality": person.nationality,
+            "dob_year": person.dob_year,
+        }
+        for person in NaturalPerson.objects.order_by("person_uid")
+    ]
+
+
+def _actual_legal_entities(session):
+    """Read the LegalEntity projection in the same shape as PostgreSQL expectations."""
+    return [
+        dict(record)
+        for record in session.run(
+            """
+            MATCH (entity:LegalEntity)
+            RETURN entity.entity_uid AS entity_uid,
+                   entity.legal_name AS legal_name,
+                   entity.legal_name_ar AS legal_name_ar,
+                   entity.jurisdiction AS jurisdiction,
+                   entity.registration_no AS registration_no,
+                   toString(entity.incorporation_date) AS incorporation_date,
+                   entity.status AS status,
+                   toString(entity.status_as_of) AS status_as_of
+            ORDER BY entity_uid
+            """
+        )
+    ]
+
+
+def _actual_natural_persons(session):
+    """Read the NaturalPerson projection in the same shape as PostgreSQL expectations."""
+    return [
+        dict(record)
+        for record in session.run(
+            """
+            MATCH (person:NaturalPerson)
+            RETURN person.person_uid AS person_uid,
+                   person.full_name AS full_name,
+                   person.full_name_ar AS full_name_ar,
+                   person.nationality AS nationality,
+                   person.dob_year AS dob_year
+            ORDER BY person_uid
+            """
+        )
+    ]
+
+
+def _comparison_value(value):
+    # PostgreSQL dates and Neo4j dates compare reliably after ISO normalization.
+    return value.isoformat() if hasattr(value, "isoformat") else value
 
 
 # Builds the ownership facts expected from PostgreSQL using stable string dates.
@@ -153,6 +196,7 @@ def _actual_ownership_relationships(session):
 
 # Reports missing and extra node identities, including accidental duplicates.
 def _identity_result(expected, actual):
+    """Report missing or extra projected identities, including duplicate rows."""
     expected_counts = Counter(expected)
     actual_counts = Counter(actual)
     result = {
@@ -172,8 +216,31 @@ def _identity_result(expected, actual):
     return result
 
 
+def _node_result(expected, actual, uid_key):
+    """Report identity mismatches first, then projected-property drift by UID."""
+    result = _identity_result(
+        [node[uid_key] for node in expected],
+        [node[uid_key] for node in actual],
+    )
+    if not result["matches"]:
+        return result
+
+    expected_by_uid = {node[uid_key]: node for node in expected}
+    actual_by_uid = {node[uid_key]: node for node in actual}
+    mismatches = [
+        uid
+        for uid in sorted(expected_by_uid)
+        if expected_by_uid[uid] != actual_by_uid[uid]
+    ]
+    if mismatches:
+        result["matches"] = False
+        result["property_mismatches"] = mismatches
+    return result
+
+
 # Reports missing and extra ownership facts while preserving duplicates.
 def _ownership_result(expected, actual):
+    # Counter comparison preserves duplicate assertions, including same-day conflicts.
     expected_counts = Counter(expected)
     actual_counts = Counter(actual)
     result = {

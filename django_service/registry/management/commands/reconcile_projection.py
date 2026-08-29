@@ -1,3 +1,4 @@
+"""Run the read-only PostgreSQL-to-Neo4j projection reconciliation check."""
 from django.core.management.base import BaseCommand, CommandError
 
 from registry.reconciliation import reconcile_projection
@@ -5,6 +6,7 @@ from registry.reconciliation import reconcile_projection
 
 # Exposes the read-only projection comparison as a thin Django command.
 class Command(BaseCommand):
+    """Compare PostgreSQL truth with the derived Neo4j projection."""
     help = "Check whether the Neo4j ownership graph matches PostgreSQL."
 
     def handle(self, *args, **options):
@@ -28,6 +30,7 @@ class Command(BaseCommand):
         self.stdout.write("reconciled: yes")
 
     def _write_result(self, label, counts):
+        """Format one node or relationship comparison for command-line review."""
         status = "OK" if counts["matches"] else "MISMATCH"
         self.stdout.write(
             f"{label}: {counts['actual']}/{counts['expected']} {status}"

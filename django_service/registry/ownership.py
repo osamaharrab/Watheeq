@@ -1,3 +1,4 @@
+"""Normalize the supported HOLDS_INTEREST_IN ownership records into PostgreSQL."""
 from datetime import date
 from typing import Any
 
@@ -27,6 +28,7 @@ def normalize_ownership(
     payload: dict[str, Any],
     provenance: IngestionRecord,
 ) -> None:
+    # bps is stored as an integer: 10,000 bps represents 100 percent.
     holder_uid = _required_string(payload, "holder_uid")
     held_uid = _required_string(payload, "held_uid")
     bps = _required_integer(payload, "bps")
@@ -34,6 +36,7 @@ def normalize_ownership(
     valid_to = _optional_date(payload, "valid_to")
     filing_uid = _optional_string(payload, "filing_uid")
 
+    # Ownership can start at a person or entity, but always ends at a LegalEntity.
     holder_person = None
     holder_entity = None
     if holder_uid.startswith("NP-"):
@@ -52,6 +55,7 @@ def normalize_ownership(
     if interest is None:
         interest = OwnershipInterest(provenance=provenance)
 
+    # valid_to=None means this assertion remains currently in force.
     interest.holder_person = holder_person
     interest.holder_entity = holder_entity
     interest.held_entity = held_entity

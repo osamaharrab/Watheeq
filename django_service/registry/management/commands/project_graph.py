@@ -1,3 +1,4 @@
+"""Run the explicit rebuild of the derived Neo4j ownership projection."""
 from django.core.management.base import BaseCommand, CommandError
 
 from registry.graph_projection import project_graph
@@ -5,6 +6,7 @@ from registry.graph_projection import project_graph
 
 # Exposes the ownership graph rebuild as a thin Django command.
 class Command(BaseCommand):
+    """Rebuild the Neo4j ownership projection from PostgreSQL."""
     help = "Rebuild the Neo4j ownership graph from PostgreSQL."
 
     def handle(self, *args, **options):

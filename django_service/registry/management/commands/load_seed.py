@@ -1,3 +1,4 @@
+"""Run provenance-preserving JSONL ingestion from an explicit source directory."""
 from django.core.management.base import BaseCommand, CommandError
 
 from registry.ingestion import ingest_seed
@@ -5,6 +6,7 @@ from registry.ingestion import ingest_seed
 
 # Exposes provenance-preserving seed ingestion as a thin Django command.
 class Command(BaseCommand):
+    """Run provenance-preserving JSONL ingestion and report its accounting."""
     help = "Load JSONL seed records into the PostgreSQL ingestion ledger."
 
     # Requires callers to identify the directory containing source JSONL files.
