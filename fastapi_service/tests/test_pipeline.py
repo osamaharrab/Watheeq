@@ -3,27 +3,11 @@ from datetime import date
 
 from app.clients.django import AuditUnavailable
 from app.clients.neo4j import QueryBoundedError
-from app.clients.ollama import ModelUnavailable
+from app.clients.ollama import ModelUnavailable, PlannerOutputError
 from app.pipeline import AskPipeline, _cypher_prompt
 from app.schemas import AskRequest, Text2CypherOutput
 
 from tests.support import test_settings
-
-
-SCHEMA = {
-    "schema_version": "watheeq-graph-1.0.0",
-    "node_labels": {
-        "LegalEntity": ["entity_uid", "legal_name"],
-        "NaturalPerson": ["person_uid", "full_name"],
-    },
-    "relationship_types": {
-        "HOLDS_INTEREST_IN": {
-            "from": ["LegalEntity", "NaturalPerson"],
-            "to": ["LegalEntity"],
-            "properties": ["bps", "valid_from", "valid_to", "filing_uid"],
-        }
-    },
-}
 
 
 def current_query(kind):
@@ -107,9 +91,6 @@ class FakeGrounding:
         self.resolve_calls = []
         self.candidate_calls = []
 
-    def question_context(self, question):
-        return [{"doc_id": "capability:ownership", "text": "ownership only"}]
-
     def resolve_entity(self, mention):
         self.resolve_calls.append(mention)
         return self.matches.get(mention, [])
@@ -164,16 +145,27 @@ class PipelineTests(unittest.TestCase):
         )
 
     def test_prompt_has_only_ownership_templates_and_role_parameters(self):
-        prompt = _cypher_prompt(AskRequest(question="Who owns LE-005?"), SCHEMA, [], [], test_settings(max_query_results=100))
+        prompt = _cypher_prompt(
+            AskRequest(question="Who owns LE-005?"),
+            [],
+            test_settings(max_query_results=100),
+        )
         self.assertIn('"query_kind"', prompt)
         self.assertIn("$holder_uids", prompt)
         self.assertIn("$target_uids", prompt)
         self.assertNotIn("ENTITY FACT template", prompt)
-        self.assertIn("First classify the requested information before using entity hints", prompt)
-        self.assertIn("An exact entity mention identifies an entity", prompt)
-        self.assertIn("Use abstain only when the request is about ownership", prompt)
+        self.assertIn("Classify the requested information first", prompt)
+        self.assertIn("Hints identify entities", prompt)
         self.assertIn("Generic categories such as natural persons", prompt)
-        self.assertIn("specific relationship between one named holder", prompt)
+        self.assertIn("Holder Alpha", prompt)
+        self.assertNotIn("registration_no", prompt)
+        self.assertIn('If action="query", query_kind MUST be a supported ownership query kind', prompt)
+        self.assertIn('NEVER return action="query" with query_kind=null, answer_mode=null, or cypher=null', prompt)
+        self.assertIn('return action="abstain" instead', prompt)
+        self.assertIn('verify every action="query" has a non-null query_kind, answer_mode, and cypher', prompt)
+        self.assertIn("holders may be LegalEntity or NaturalPerson", prompt)
+        self.assertIn("holder.entity_uid IN $holder_uids and holder.person_uid IN $holder_uids branches", prompt)
+        self.assertIn("Never simplify it to only one branch", prompt)
 
     def test_specific_stake_uses_relationship_check_with_both_endpoints(self):
         holder = {
@@ -192,12 +184,12 @@ class PipelineTests(unittest.TestCase):
         }
         planner_output = plan(
             "relationship_check",
-            holders=["Holder Alpha"],
-            targets=["Target Beta"],
+            holders=["NP-900"],
+            targets=["LE-900"],
         )
         pipeline = self.pipeline(
             planner_output,
-            matches={"Holder Alpha": [holder], "Target Beta": [target]},
+            matches={"NP-900": [holder], "LE-900": [target]},
             candidates=[holder, target],
             rows=[relationship("NP-900", "LE-900", 4200, "2020-01-01")],
         )
@@ -209,8 +201,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(planner_output.query_kind, "relationship_check")
-        self.assertEqual(planner_output.holder_mentions, ["Holder Alpha"])
-        self.assertEqual(planner_output.target_mentions, ["Target Beta"])
+        self.assertEqual(planner_output.holder_mentions, ["NP-900"])
+        self.assertEqual(planner_output.target_mentions, ["LE-900"])
         self.assertEqual(result.status, "answered")
         self.assertEqual(
             pipeline.neo4j.calls[0][1],
@@ -247,7 +239,9 @@ class PipelineTests(unittest.TestCase):
                 self.assertEqual(result.resolved_entities, [])
                 self.assertEqual(result.citations, [])
                 self.assertEqual(result.conflicts, [])
+                self.assertEqual(grounding.candidate_calls, [])
                 self.assertEqual(grounding.resolve_calls, [])
+                self.assertEqual(pipeline.ollama.prompts, [])
                 self.assertEqual(neo4j.calls, [])
                 self.assertIsNone(django.payloads[0]["generated_cypher"])
                 self.assertFalse(django.payloads[0]["cypher_executed"])
@@ -317,6 +311,45 @@ LIMIT 3"""
                 self.assertEqual(result.resolved_entities, [])
                 self.assertEqual(pipeline.neo4j.calls, [])
 
+    def test_scope_gate_handles_years_only_for_ownership_questions(self):
+        outside = self.pipeline(Text2CypherOutput(action="unsupported", reason="outside"))
+        result, _ = outside.ask(
+            AskRequest(question="What registry field existed for Target Beta in 2017?")
+        )
+        self.assertEqual(result.status, "unsupported")
+        self.assertEqual(outside.ollama.prompts, [])
+        self.assertEqual(outside.neo4j.calls, [])
+
+        ownership = self.pipeline(plan("incoming_ownership", targets=["Target Beta"]))
+        result, _ = ownership.ask(
+            AskRequest(question="Who owned Target Beta in 2017?")
+        )
+        self.assertEqual(result.status, "abstained")
+        self.assertEqual(ownership.ollama.prompts, [])
+        self.assertEqual(ownership.neo4j.calls, [])
+
+    def test_upstream_ownership_wording_uses_the_bounded_query_kind(self):
+        target = {
+            "type": "LegalEntity",
+            "canonical_id": "LE-900",
+            "display_name": "Target Beta",
+            "metadata": {},
+            "match_method": "exact",
+        }
+        pipeline = self.pipeline(
+            plan("upstream_ownership", targets=["LE-900"]),
+            matches={"LE-900": [target]},
+            candidates=[target],
+            rows=[relationship("LE-901", "LE-900", 6000, "2020-01-01")],
+        )
+
+        result, _ = pipeline.ask(
+            AskRequest(question="Trace the ultimate owners of Target Beta.")
+        )
+
+        self.assertEqual(result.status, "answered")
+        self.assertEqual(pipeline.neo4j.calls[0][1], {"target_uids": ["LE-900"]})
+
     def test_exact_entity_hints_reach_the_planner_and_relationship_check_uses_both_roles(self):
         person = {"type": "NaturalPerson", "canonical_id": "NP-003", "display_name": "Faisal Nusseibeh", "metadata": {}, "match_method": "exact"}
         entity = {"type": "LegalEntity", "canonical_id": "LE-006", "display_name": "Cedar Ridge Investments Ltd", "metadata": {}, "match_method": "exact"}
@@ -345,6 +378,7 @@ LIMIT 3"""
         self.assertIn('"canonical_id": "NP-003"', prompt)
         self.assertIn('"canonical_id": "LE-006"', prompt)
         self.assertEqual(result.status, "answered")
+        self.assertEqual(len(pipeline.ollama.prompts), 1)
         self.assertEqual(
             pipeline.neo4j.calls[0][1],
             {"holder_uids": ["NP-003"], "target_uids": ["LE-006"]},
@@ -357,10 +391,10 @@ LIMIT 3"""
             candidates=[hybrid],
         )
 
-        result, _ = pipeline.ask(AskRequest(question="How do I cook maqluba?"))
+        result, _ = pipeline.ask(AskRequest(question="Who owns Target Beta?"))
 
         self.assertEqual(result.status, "unsupported")
-        self.assertIn("planning hints only: []", pipeline.ollama.prompts[0])
+        self.assertIn("Verified exact entity hints: []", pipeline.ollama.prompts[0])
         self.assertEqual(pipeline.neo4j.calls, [])
 
     def test_incomplete_plan_that_drops_an_exact_entity_abstains_before_graph_execution(self):
@@ -444,7 +478,7 @@ LIMIT 3"""
             matches={"NP-003": [person]},
             rows=[relationship("NP-003", "LE-006", 5100, "2009-06-30")],
         )
-        result, _ = historical.ask(AskRequest(question="Which entities did NP-003 hold?", as_of=date(2010, 1, 1)))
+        result, _ = historical.ask(AskRequest(question="Which entities did NP-003 hold interests in?", as_of=date(2010, 1, 1)))
         self.assertEqual(historical.neo4j.calls[0][1], {"holder_uids": ["NP-003"], "as_of": date(2010, 1, 1)})
         self.assertIn("LE-006 (5100 bps) [1]", result.answer)
 
@@ -456,7 +490,7 @@ LIMIT 3"""
             matches={"LE-006": [entity]},
             rows=[relationship("LE-006", "LE-005", 2000, "2025-09-14")],
         )
-        outgoing_result, _ = outgoing.ask(AskRequest(question="What entities does LE-006 hold?"))
+        outgoing_result, _ = outgoing.ask(AskRequest(question="What entities does LE-006 hold interests in?"))
         self.assertIn("LE-005 (2000 bps) [1]", outgoing_result.answer)
 
         person = {"type": "NaturalPerson", "canonical_id": "NP-003", "display_name": "Faisal", "metadata": {}, "match_method": "exact"}
@@ -489,7 +523,7 @@ LIMIT 3"""
             matches=matches,
             rows=[relationship("LE-006", "LE-005", 7000, "2013-11-27", "2025-09-14", "FL-101")],
         )
-        result, _ = historical.ask(AskRequest(question="How much does LE-006 hold in LE-005?", as_of=date(2025, 9, 13)))
+        result, _ = historical.ask(AskRequest(question="What ownership stake does LE-006 hold in LE-005?", as_of=date(2025, 9, 13)))
         self.assertIn("LE-006 holds 7000 bps in LE-005, effective from 2013-11-27 until 2025-09-14 under filing FL-101 [1]", result.answer)
 
         boundary_rows = [
@@ -544,6 +578,7 @@ LIMIT 3"""
                 self.assertEqual(result.citations, [])
                 self.assertEqual(result.conflicts, [])
                 self.assertEqual(grounding.resolve_calls, [])
+                self.assertEqual(pipeline.ollama.prompts, [])
                 self.assertEqual(neo4j.calls, [])
                 self.assertIsNone(django.payloads[0]["generated_cypher"])
                 self.assertFalse(django.payloads[0]["cypher_executed"])
@@ -564,6 +599,19 @@ LIMIT 3"""
         result, _ = unknown.ask(AskRequest(question="Who owns Unknown?"))
         self.assertEqual(result.status, "abstained")
         self.assertEqual(unknown.neo4j.calls, [])
+
+        duplicate = [
+            {"type": "LegalEntity", "canonical_id": "LE-900", "display_name": "Duplicate Target", "metadata": {}, "match_method": "exact"},
+            {"type": "LegalEntity", "canonical_id": "LE-901", "display_name": "Duplicate Target", "metadata": {}, "match_method": "exact"},
+        ]
+        duplicate_name = self.pipeline(
+            plan("incoming_ownership", targets=["Duplicate Target"]),
+            matches={"Duplicate Target": duplicate},
+            candidates=duplicate,
+        )
+        result, _ = duplicate_name.ask(AskRequest(question="Who owns Duplicate Target?"))
+        self.assertEqual(result.status, "abstained")
+        self.assertEqual(duplicate_name.neo4j.calls, [])
 
         zero = self.pipeline(plan("incoming_ownership", targets=["LE-005"]), matches={"LE-005": [{"type": "LegalEntity", "canonical_id": "LE-005", "display_name": "Aqaba", "metadata": {}, "match_method": "exact"}]}, rows=[])
         result, _ = zero.ask(AskRequest(question="Who owns LE-005?"))
@@ -606,6 +654,13 @@ LIMIT 3"""
         unavailable.generate_cypher = lambda prompt: (_ for _ in ()).throw(ModelUnavailable())
         result, _ = AskPipeline(test_settings(), FakeGrounding(), FakeNeo4j(), unavailable, FakeDjango()).ask(AskRequest(question="List ownership relationships."))
         self.assertEqual(result.status, "unavailable")
+
+        invalid = FakeOllama(plan("ownership_relationships"))
+        invalid.generate_cypher = lambda prompt: (_ for _ in ()).throw(PlannerOutputError())
+        django = FakeDjango()
+        result, _ = AskPipeline(test_settings(), FakeGrounding(), FakeNeo4j(), invalid, django).ask(AskRequest(question="List ownership relationships."))
+        self.assertEqual(result.status, "abstained")
+        self.assertFalse(django.payloads[0]["cypher_executed"])
 
         with self.assertRaises(AuditUnavailable):
             self.pipeline(plan("ownership_relationships"), django=FakeDjango(AuditUnavailable())).ask(AskRequest(question="List ownership relationships."))

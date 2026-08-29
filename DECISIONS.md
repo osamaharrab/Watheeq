@@ -86,6 +86,16 @@
 
 **Why:** This avoids general-chat answers, citation/value mismatches, and partial relationship answers while keeping the audit, guard, and graph-execution plumbing reusable for a later relationship slice.
 
+## 12. Final local planner configuration remains fail-closed
+
+**Decision:** Adopt local `qwen2.5-coder:7b` for the final runtime configuration while retaining deterministic validation of every generated plan and Cypher.
+
+**Why:** The final local experiment combined the larger coder model with planner-contract changes and improved overall harness routing. It still produced malformed or scope-mismatched ownership plans, so invalid output must abstain rather than be repaired or executed.
+
+**Alternative not chosen:** Automatically rewriting incomplete model output, guessing holder UID properties, weakening `_cypher_matches_plan`, or bypassing the schema guard to raise the evaluation score.
+
+**Negative result:** The final evaluation still has 6/48 failures. Three of the four expected-answer cases in the supplied evaluation remain failures, and some supported ownership formulations still abstain.
+
 ## Negative result
 
 Using hybrid retrieval directly for an exact company-name question returned several candidates and produced an incorrect ownership query. Runtime `/api/v1/entities/resolve` and `/api/v1/ask` results, together with focused grounding tests, showed the problem. Exact-first resolution replaced hybrid-first retrieval.

@@ -11,7 +11,12 @@ from ..schemas import Text2CypherOutput
 
 
 class ModelUnavailable(Exception):
-    """Raised when the required local model cannot provide valid structured output."""
+    """Raised when the configured local Ollama service cannot be reached."""
+    pass
+
+
+class PlannerOutputError(Exception):
+    """Raised when Ollama responds but does not provide a valid planner result."""
     pass
 
 
@@ -43,7 +48,7 @@ class OllamaClient:
         try:
             return Text2CypherOutput.model_validate(json.loads(payload))
         except (json.JSONDecodeError, ValidationError) as error:
-            raise ModelUnavailable("Ollama returned invalid Text2Cypher JSON") from error
+            raise PlannerOutputError("Ollama returned invalid Text2Cypher JSON") from error
 
     def _chat(self, prompt: str) -> str:
         """Send one deterministic non-streaming local chat request."""
@@ -53,7 +58,7 @@ class OllamaClient:
                 json={
                     "model": self.settings.ollama_model,
                     "stream": False,
-                    "format": "json",
+                    "format": Text2CypherOutput.model_json_schema(),
                     "think": False,
                     "options": {
                         "temperature": 0,
@@ -64,9 +69,12 @@ class OllamaClient:
                 },
             )
             response.raise_for_status()
-            content = response.json().get("message", {}).get("content")
+            try:
+                content = response.json().get("message", {}).get("content")
+            except (TypeError, ValueError) as error:
+                raise PlannerOutputError("Ollama response is not valid JSON") from error
             if not isinstance(content, str):
-                raise ModelUnavailable("Ollama response has no message content")
+                raise PlannerOutputError("Ollama response has no message content")
             return content
         except httpx.HTTPError as error:
             raise ModelUnavailable("Configured local Ollama model is unavailable") from error

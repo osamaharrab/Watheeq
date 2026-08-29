@@ -6,7 +6,7 @@
 - PostgreSQL is the authoritative record for the implemented data.
 - Django projects the ownership slice into Neo4j and can reconcile that projection with PostgreSQL.
 - Weaviate provides entity grounding and discovery.
-- FastAPI serves the query API. It uses local Ollama `qwen3:4b` once to plan ownership intent and produce Text2Cypher.
+- FastAPI serves the query API. It uses local Ollama `qwen2.5-coder:7b` once to plan ownership intent and produce Text2Cypher. No hosted model API is used at runtime.
 - Generated Cypher is checked by deterministic read-only guards before Neo4j runs it.
 - Final ownership answers are rendered deterministically from verified Neo4j relationship facts and citations. Every `/api/v1/ask` outcome is audited in PostgreSQL.
 - An evaluation harness posts the supplied questions and records results in `EVAL_REPORT.md`.
@@ -39,105 +39,210 @@ Question
   -> PostgreSQL audit
 ```
 
-The queryable graph contains `LegalEntity` and `NaturalPerson` nodes with `HOLDS_INTEREST_IN` relationships. Relationships run from a natural person or legal entity to a legal entity and contain `bps`, `valid_from`, `valid_to`, and `filing_uid`.
+## Supported graph surface
+
+| Item | Implemented surface |
+| --- | --- |
+| Nodes | `LegalEntity`, `NaturalPerson` |
+| Relationship | `HOLDS_INTEREST_IN` from a legal entity or natural person to a legal entity |
+| Relationship properties | `bps`, `valid_from`, `valid_to`, `filing_uid` |
+| Canonical identity | `entity_uid` for legal entities; `person_uid` for natural persons |
 
 `bps` is an integer: 10,000 bps equals 100 percent. There is no percentage property. Current ownership has `valid_to = null`. Historical ownership uses `valid_from <= as_of` and `(valid_to is null OR as_of <= valid_to)`; the end date is inclusive. Legal entities are identified by `entity_uid`, not legal name; natural persons are identified by `person_uid`.
 
-## Requirements
+## Prerequisites
 
 - Docker and Docker Compose
-- Enough local RAM and disk for the stack and the local `qwen3:4b` model
+- Enough local RAM and disk for the stack and the local `qwen2.5-coder:7b` model
 
-The base setup uses `docker-compose.yml`; no GPU is required. `docker-compose.gpu.yml` is optional local acceleration for an NVIDIA GPU.
+The default workflow uses CPU/base Docker Compose. No GPU is required.
 
-## Quick start
+| Service | Purpose | Local address |
+| --- | --- | --- |
+| Django | authoritative ledger and audit API | `http://localhost:8000` |
+| FastAPI | query/API service | `http://localhost:8001` |
+| Neo4j | derived graph | `http://localhost:7474` |
+| Weaviate | grounding index | `http://localhost:8080` |
+| Ollama | local LLM | `http://localhost:11435` |
+| PostgreSQL | authoritative database | `localhost:5432` |
+
+## Fresh-clone quick start
 
 From a fresh clone:
 
 ```bash
-git clone <repository-url> Watheeq_Osama_Take_Home_Pack
+git clone \
+  --branch feature-osama \
+  --single-branch \
+  https://github.com/osamaharrab/Watheeq.git \
+  Watheeq_Osama_Take_Home_Pack
+
 cd Watheeq_Osama_Take_Home_Pack
 cp .env.example .env
 docker compose up --build -d
 ```
 
-Pull the required local model, then check the model list:
+### Ollama placement
+
+Ollama runs inside Docker Compose. This keeps model access on the Compose service network (`http://ollama:11434`) and makes the runtime path consistent across reviewer machines.
+
+A host-installed Ollama was not chosen because `localhost` inside the FastAPI container refers to that container, not the host. Host Ollama would require host-specific routing and configuration, making model availability and digest verification less reproducible.
+
+On a fresh Ollama volume, `docker compose up` starts the Ollama service, but FastAPI `/ready` remains unavailable until the pinned model is pulled. After the pull completes and the exact digest is present, the readiness check should succeed.
+
+Pull the required local model, then check the model list. Runtime inference uses local Ollama; no hosted model API is used.
 
 ```bash
-docker compose exec -T ollama ollama pull qwen3:4b
-curl -fsS http://localhost:11435/api/tags
+docker compose exec -T ollama \
+  ollama pull qwen2.5-coder:7b
+docker compose exec -T ollama ollama list
+
+curl -fsS \
+  http://localhost:11435/api/tags \
+  | python -m json.tool
 ```
 
-Confirm that `qwen3:4b` has digest:
+In the `qwen2.5-coder:7b` entry returned by `/api/tags`, verify this exact full digest. The shortened identifier shown by `ollama list` is not sufficient for full digest verification:
 
 ```text
-359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
+dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364
 ```
 
-Run the data and projection steps in this order:
+## Initialize data and derived stores
+
+Run these commands in order:
 
 ```bash
-docker compose exec -T django python manage.py migrate
-docker compose run --rm --volume "$PWD/data:/app/data:ro" django \
+docker compose exec -T django \
+  python manage.py migrate
+
+docker compose run --rm \
+  --volume "$PWD/data:/app/data:ro" \
+  django \
   python manage.py load_seed --source data/graph_seed
-docker compose exec -T django python manage.py project_graph
-docker compose exec -T django python manage.py reconcile_projection
-docker compose exec -T fastapi python scripts/rebuild_grounding.py
-curl -fsS http://localhost:8000/ready
-curl -fsS http://localhost:8001/ready
+
+docker compose exec -T django \
+  python manage.py project_graph
+
+docker compose exec -T django \
+  python manage.py reconcile_projection
+
+docker compose exec -T fastapi \
+  python scripts/rebuild_grounding.py
 ```
 
-The Django service does not mount `data/` by default. The explicit read-only mount in the `load_seed` command is required.
+PostgreSQL is authoritative; Neo4j and Weaviate are rebuildable derived stores. The Django service does not mount `data/` by default, so the explicit read-only mount in the `load_seed` command is required. `reconcile_projection` exits non-zero if Neo4j does not match PostgreSQL.
 
-## API
-
-`/api/v1/ask` currently supports only the `HOLDS_INTEREST_IN` ownership relationship slice. It supports current and structured historical ownership questions, outgoing holdings, and specific holder-to-company relationships. Requests outside that relationship scope are intended to return `unsupported`; the latest evaluation records remaining conservative classification errors.
-
-Response statuses are: `answered` for verified ownership facts; `unsupported` for understood requests outside this slice; `abstained` for ownership requests that cannot be safely grounded, represented, or proved; `refused` for prohibited or unsafe requests; and `unavailable` when a required local dependency is unavailable.
+## Verify readiness
 
 ```bash
+curl -fsS http://localhost:8000/health | python -m json.tool
+curl -fsS http://localhost:8000/ready  | python -m json.tool
+
 curl -fsS http://localhost:8001/health | python -m json.tool
-curl -fsS http://localhost:8001/ready | python -m json.tool
-curl -fsS http://localhost:8001/api/v1/schema | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/entities/resolve \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Aqaba Logistics Park Company"}' | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Who holds interests in LE-005?"}' | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Which entities does NP-003 hold interests in?"}' | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Does NP-003 hold an interest in LE-006?"}' | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Who held interests in LE-005?","as_of":"2025-09-13"}' | python -m json.tool
-
-curl -fsS -X POST http://localhost:8001/api/v1/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"List all company names."}' | python -m json.tool
-
-curl -fsS http://localhost:8000/api/v1/audit/<REQUEST_ID> | python -m json.tool
+curl -fsS http://localhost:8001/ready  | python -m json.tool
 ```
 
-`/health` reports process liveness. `/ready` also checks the required local dependencies and the pinned Ollama model. `/api/v1/ask` returns its audit request ID in the `X-Request-ID` response header.
+`/health` checks process liveness. `/ready` checks required local dependencies. FastAPI readiness includes Django, Neo4j, Weaviate, and the pinned Ollama model.
+
+## API walkthrough
+
+`/api/v1/ask` supports only the `HOLDS_INTEREST_IN` ownership relationship slice. `answered` responses require verified ownership facts and citations. Understood requests outside the slice are `unsupported`; ownership requests that cannot be safely grounded, represented, or proved are `abstained`; unsafe requests are `refused`.
+
+| Method | Endpoint | Service |
+| --- | --- | --- |
+| POST | `/api/v1/ask` | FastAPI |
+| POST | `/api/v1/entities/resolve` | FastAPI |
+| GET | `/api/v1/entities/{entity_uid}/ownership` | FastAPI |
+| GET | `/api/v1/schema` | FastAPI |
+| GET | `/api/v1/audit/{request_id}` | Django |
+| GET | `/api/v1/ledger/entities/{entity_uid}` | Django |
+| GET | `/health` and `/ready` | both services |
+
+Schema:
+
+```bash
+curl -fsS \
+  http://localhost:8001/api/v1/schema \
+  | python -m json.tool
+```
+
+Entity resolution:
+
+```bash
+curl -fsS -X POST \
+  http://localhost:8001/api/v1/entities/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Aqaba Logistics Park Company"}' \
+  | python -m json.tool
+```
+
+Known successful natural-language ownership query:
+
+```bash
+curl -fsS -X POST \
+  http://localhost:8001/api/v1/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Who holds interests in LE-005?"}' \
+  | python -m json.tool
+```
+
+Deterministic current and historical ownership endpoints:
+
+```bash
+curl -fsS \
+  http://localhost:8001/api/v1/entities/LE-005/ownership \
+  | python -m json.tool
+
+curl -fsS \
+  "http://localhost:8001/api/v1/entities/LE-005/ownership?as_of=2025-09-13" \
+  | python -m json.tool
+```
+
+PostgreSQL ledger and provenance view:
+
+```bash
+curl -fsS \
+  http://localhost:8000/api/v1/ledger/entities/LE-005 \
+  | python -m json.tool
+```
+
+## Required Django management commands
+
+The initialization section uses `load_seed`, `project_graph`, and `reconcile_projection`. To replay an audited request from its immutable audit row:
+
+```bash
+docker compose exec -T django \
+  python manage.py replay_audit --request-id <REQUEST_ID>
+```
+
+`replay_audit` reconstructs the recorded request from the immutable audit row without relying on the original conversation.
+
+## Audit and replay
+
+`/api/v1/ask` returns its audit request ID in the `X-Request-ID` response header. Retrieve it through Django, then use the replay command above if needed.
+
+```bash
+curl -fsS \
+  http://localhost:8000/api/v1/audit/<REQUEST_ID> \
+  | python -m json.tool
+```
+
+The generated [EVAL_REPORT.md](EVAL_REPORT.md) includes separate live smoke-test examples for a successful query, abstention, refusal, and conflict. Those examples are not counted in the 48-question evaluation metrics.
 
 ## Tests
 
 ```bash
-docker compose run --rm --volume "$PWD/data:/app/data:ro" django \
+docker compose run --rm \
+  --volume "$PWD/data:/app/data:ro" \
+  django \
   python manage.py test registry
-docker compose exec -T fastapi python -m unittest discover -s tests
+
+docker compose exec -T fastapi \
+  python -m unittest discover -s tests
 ```
 
-The Django command needs the same read-only seed-data mount. The latest developer-verified results were 42 Django tests passed and 61 FastAPI tests passed. Results may vary in a different environment.
+The Django command needs the same read-only seed-data mount. The test suite is designed to run without hosted-model or network inference.
 
 ## Evaluation
 
@@ -145,16 +250,39 @@ The Django command needs the same read-only seed-data mount. The latest develope
 python scripts/run_eval.py
 ```
 
-The harness posts 48 questions to `/api/v1/ask`, checks the expected outcome, validates citations independently, and checks that audit records were written. It keeps failures in the generated report.
+The harness posts the 48 supplied questions to `/api/v1/ask`, checks expected outcomes, validates citations independently, checks Django audit rows, and applies fixture-backed oracles where defensible. It generates `EVAL_REPORT.md` and retains failures.
 
-The latest report records 21/48 passed outcome/citation/audit checks and 27 failures. Audit records were found for all 48 questions, and the unsupported assertion count was 0. No evaluation responses were scored as answered. Several failures were conservative abstentions or `unsupported` versus `abstained` classification mismatches; five evaluation requests returned `unavailable` because a required local dependency/runtime was unavailable. See [EVAL_REPORT.md](EVAL_REPORT.md) for the taxonomy and full results.
+The current report records **42/48 evaluation cases passed the outcome/citation/audit harness checks**, with 6 failures. This is not 87.5% ownership-answer accuracy: 1/4 expected `answered` cases passed, while 26/28 expected `unsupported`, 10/11 expected `abstained`, and 5/5 expected `refused` cases passed. Audit coverage was 48/48, unsupported assertions remained 0, and the one answered evaluation case passed its oracle and citation validation.
+
+Direct ownership is 1/2 in the report; ownership traversal remains 0/2. Several supported formulations still abstain. See [EVAL_REPORT.md](EVAL_REPORT.md) for all six failures, per-class results, and the four live smoke-test examples.
+
+## Pack verification
+
+```bash
+python scripts/verify_pack.py
+```
+
+This writes the supplied-fixture verification record to `PACK_VERIFICATION.json`. Do not edit that record by hand.
+
+## Optional GPU acceleration
+
+`docker-compose.gpu.yml` is optional NVIDIA acceleration only. The CPU/base workflow above is the normal reviewer path.
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.gpu.yml \
+  up -d --build
+```
 
 ## Known limitations
 
 - The queryable graph is intentionally limited to the ownership slice.
-- Global ownership arithmetic and completeness assertions are intentionally not implemented.
-- The local planner can be over-conservative: some supported ownership formulations abstain, and `unsupported` versus `abstained` classification is not yet perfect.
-- Local model and dependency availability can affect latency and evaluation runs.
+- Global ownership arithmetic and completeness assertions are not fully supported.
+- Some valid supported ownership formulations still abstain; traversal remains weak.
+- `unsupported` versus `abstained` routing is not perfect.
+- Generated plans fail closed when they do not match deterministic validation; they are not silently repaired.
+- Local inference latency depends on available hardware.
 
 ## Actual hours
 

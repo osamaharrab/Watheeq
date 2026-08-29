@@ -212,7 +212,9 @@ def write_report(questions, results, failures, examples):
     for result in results:
         classes[result["class"]].append(result)
     answered = [result for result in results if result["status"] == "answered"]
-    citation_rate = sum(result["citation_valid"] for result in answered) / len(answered) if answered else 0
+    expected_outcomes = defaultdict(list)
+    for result in results:
+        expected_outcomes[result["expected"]].append(result)
     unsupported_assertions = sum(result["status"] == "answered" and result["expected"] != "answered" for result in results)
     checksum = hashlib.sha256(QUESTIONS.read_bytes()).hexdigest()
     lines = [
@@ -229,15 +231,35 @@ def write_report(questions, results, failures, examples):
         f"- Questions: {len(questions)}",
         f"- Passed outcome/citation/audit checks: {sum(result['passed'] for result in results)}",
         f"- Failures: {len(failures)}",
-        f"- Answered: {len(answered)}",
+        f"- Answered among the {len(questions)} evaluation questions: {len(answered)}",
         f"- Status-correct responses: {sum(result['status_correct'] for result in results)}",
         f"- Audit records found: {sum(result['audit_found'] for result in results)}",
         f"- Oracle-correct answered responses: {sum(result['oracle_correct'] for result in answered)}",
-        f"- Citation validity rate among answered responses: {citation_rate:.2%}",
         f"- Unsupported assertion count: {unsupported_assertions}",
         "",
-        "## Per-class results",
+        "## Expected-outcome results",
     ]
+    for outcome, entries in sorted(expected_outcomes.items()):
+        lines.append(
+            f"- Expected {outcome}: {sum(item['passed'] for item in entries)}/{len(entries)} passed"
+        )
+    lines.extend([
+        "",
+        "## Citation validation",
+    ])
+    if answered:
+        citation_rate = sum(result["citation_valid"] for result in answered) / len(answered)
+        lines.append(
+            f"- Citation validity rate among answered evaluation responses: {citation_rate:.2%}"
+        )
+    else:
+        lines.append(
+            "- Citation validity rate among answered evaluation responses: N/A (no evaluation questions returned answered)"
+        )
+    lines.extend([
+        "",
+        "## Per-class results",
+    ])
     for name, entries in sorted(classes.items()):
         lines.append(f"- {name}: {sum(item['passed'] for item in entries)}/{len(entries)} passed")
     lines.extend(["", "## Failures"])
@@ -245,7 +267,11 @@ def write_report(questions, results, failures, examples):
         lines.extend(f"- {item['id']}: expected `{item['expected']}`, got `{item['status']}`" for item in failures)
     else:
         lines.append("- None. Review this result carefully; a report without failures is unusual.")
-    lines.extend(["", "## Live examples"])
+    lines.extend([
+        "",
+        "## Live smoke-test examples",
+        "The requests below are captured separately from the 48-question evaluation set and are not included in the evaluation metrics above.",
+    ])
     for name, example in examples.items():
         lines.append(f"### {name}")
         lines.append("```json")
