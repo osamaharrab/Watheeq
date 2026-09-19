@@ -75,9 +75,9 @@ git clone \
   --branch feature-osama \
   --single-branch \
   https://github.com/osamaharrab/Watheeq.git \
-  Watheeq_Osama_Take_Home_Pack
+  Watheeq
 
-cd Watheeq_Osama_Take_Home_Pack
+cd Watheeq_Osama
 cp .env.example .env
 docker compose up --build -d
 ```
