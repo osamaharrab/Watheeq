@@ -53,9 +53,8 @@ Question
 ## Prerequisites
 
 - Docker and Docker Compose
-- Enough local RAM and disk for the stack and the local `qwen2.5-coder:7b` model
-
-The default workflow uses CPU/base Docker Compose. No GPU is required.
+- Enough RAM and disk for the stack and `qwen2.5-coder:7b`
+- CPU/base Compose is the default; GPU is optional
 
 | Service | Purpose | Local address |
 | --- | --- | --- |
@@ -64,11 +63,10 @@ The default workflow uses CPU/base Docker Compose. No GPU is required.
 | Neo4j | derived graph | `http://localhost:7474` |
 | Weaviate | grounding index | `http://localhost:8080` |
 | Ollama | local LLM | `http://localhost:11435` |
+| Web console | Next.js analyst UI and same-origin BFF | `http://localhost:3000` |
 | PostgreSQL | authoritative database | `localhost:5432` |
 
 ## Fresh-clone quick start
-
-From a fresh clone:
 
 ```bash
 git clone \
@@ -78,41 +76,14 @@ git clone \
   Watheeq
 
 cd Watheeq_Osama
+
 cp .env.example .env
+
 docker compose up --build -d
-```
 
-### Ollama placement
-
-Ollama runs inside Docker Compose. This keeps model access on the Compose service network (`http://ollama:11434`) and makes the runtime path consistent across reviewer machines.
-
-A host-installed Ollama was not chosen because `localhost` inside the FastAPI container refers to that container, not the host. Host Ollama would require host-specific routing and configuration, making model availability and digest verification less reproducible.
-
-On a fresh Ollama volume, `docker compose up` starts the Ollama service, but FastAPI `/ready` remains unavailable until the pinned model is pulled. After the pull completes and the exact digest is present, the readiness check should succeed.
-
-Pull the required local model, then check the model list. Runtime inference uses local Ollama; no hosted model API is used.
-
-```bash
 docker compose exec -T ollama \
   ollama pull qwen2.5-coder:7b
-docker compose exec -T ollama ollama list
 
-curl -fsS \
-  http://localhost:11435/api/tags \
-  | python -m json.tool
-```
-
-In the `qwen2.5-coder:7b` entry returned by `/api/tags`, verify this exact full digest. The shortened identifier shown by `ollama list` is not sufficient for full digest verification:
-
-```text
-dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364
-```
-
-## Initialize data and derived stores
-
-Run these commands in order:
-
-```bash
 docker compose exec -T django \
   python manage.py migrate
 
@@ -131,19 +102,132 @@ docker compose exec -T fastapi \
   python scripts/rebuild_grounding.py
 ```
 
+Open **http://localhost:3000**.
+
+Optional readiness check:
+
+```bash
+curl -fsS http://localhost:8000/ready | python -m json.tool
+curl -fsS http://localhost:8001/ready | python -m json.tool
+```
+
+## Starting an already initialized environment
+
+```bash
+docker compose up -d
+```
+
+Open **http://localhost:3000**.
+
+```
+
+## Ollama placement
+
+Ollama runs inside Docker Compose. This keeps model access on the Compose service network (`http://ollama:11434`) and makes the runtime path consistent across reviewer machines.
+
+A host-installed Ollama was not chosen because `localhost` inside the FastAPI container refers to that container, not the host. Host Ollama would require host-specific routing and configuration, making model availability and digest verification less reproducible.
+
+On a fresh Ollama volume, FastAPI `/ready` remains unavailable until the pinned model has been pulled (a quick start step). Runtime inference uses local Ollama; no hosted model API is used.
+
+To verify the pinned model:
+
+```bash
+docker compose exec -T ollama ollama list
+
+curl -fsS \
+  http://localhost:11435/api/tags \
+  | python -m json.tool
+```
+
+In the `qwen2.5-coder:7b` entry returned by `/api/tags`, verify this exact full digest. The shortened identifier shown by `ollama list` is not sufficient for full digest verification:
+
+```text
+dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364
+```
+
+## Initialize data and derived stores
+
+The quick start runs these steps in order: `migrate`, `load_seed`, `project_graph`, `reconcile_projection`, `rebuild_grounding.py`.
+
 PostgreSQL is authoritative; Neo4j and Weaviate are rebuildable derived stores. The Django service does not mount `data/` by default, so the explicit read-only mount in the `load_seed` command is required. `reconcile_projection` exits non-zero if Neo4j does not match PostgreSQL.
 
 ## Verify readiness
 
+`/health` checks process liveness. `/ready` checks required local dependencies. FastAPI readiness includes Django, Neo4j, Weaviate, and the pinned Ollama model.
+
 ```bash
 curl -fsS http://localhost:8000/health | python -m json.tool
-curl -fsS http://localhost:8000/ready  | python -m json.tool
-
 curl -fsS http://localhost:8001/health | python -m json.tool
-curl -fsS http://localhost:8001/ready  | python -m json.tool
 ```
 
-`/health` checks process liveness. `/ready` checks required local dependencies. FastAPI readiness includes Django, Neo4j, Weaviate, and the pinned Ollama model.
+The `/ready` checks are in the quick start.
+
+## Frontend analyst console (`web/`)
+
+### What was added
+
+`web/` is a Next.js analyst console built on top of the existing backend. It calls the live FastAPI and Django services; it is not a mock frontend. No backend business logic or API contract was changed for it.
+
+- **Entity Search** for companies (legal entities) and persons (natural persons). Ambiguous matches are never auto-selected.
+- **Legal-entity ownership workspace:**
+  - current ownership (no `as_of` sent)
+  - historical ownership (exact `as_of` date)
+  - direct owners and ownership chains
+  - conflicts shown side by side
+  - cycles and self-holdings flagged
+  - ledger provenance (source file and line)
+- **Ask Watheeq** for natural-language ownership questions:
+  - evidence citations, each traceable to its ledger record
+  - the audit record, fetched using the `X-Request-ID` response header
+  - a separate state for each outcome: `answered`, `abstained`, `unsupported`, `refused`, `bounded_out`, `unavailable`
+- **Service readiness indicator**, driven by both services' `/ready` endpoints.
+- **Plain-language states.** Loading, empty and error states explain themselves in plain terms. Technical detail, including generated Cypher, stays behind collapsed disclosures.
+- **Onboarding examples.** "Try an example" questions, each live-verified to return `answered`.
+- **Responsive layout and accessibility.** Desktop, tablet and mobile layouts, with visible keyboard focus.
+
+### Design
+
+The screen structure and UI/UX direction were first designed in Figma. The three reference screens are stored in `docs/ui-reference/`. The design was then implemented by hand in Next.js and refined through testing against the live backend; Figma did not generate the frontend code.
+
+The direction is deliberately restrained and analyst-focused:
+- dark navy navigation and a light workspace
+- clear hierarchy
+- evidence-first interaction
+- technical details disclosed only when asked for
+
+### Architecture
+
+```text
+Browser
+  -> Next.js :3000
+       -> pages / UI
+       -> server-side Route Handlers (BFF, /api/*)
+            -> FastAPI (http://fastapi:8000)
+            -> Django  (http://django:8000)
+```
+
+Browser code talks only to the same-origin Next.js `/api/*` routes. Next.js makes the server-side calls to FastAPI and Django. This meant backend CORS configuration did not need to change, and backend service URLs stay on the server. The browser never calls ports 8000 or 8001, and Django's `/internal/audit` write endpoint is never exposed.
+
+### Why this frontend stack
+
+- **Next.js (App Router).** React UI and server-side Route Handlers live in one project. That made the backend-for-frontend (BFF) pattern simple and let FastAPI and Django stay unchanged. Its standalone production build also fits the Docker Compose stack.
+- **TypeScript.** Keeps the request and response contracts with FastAPI and Django explicit, which reduces integration mistakes.
+- **Tailwind CSS.** Provides a small, consistent, responsive styling layer without a large UI framework.
+
+Angular could also support this product. It would add more framework structure than this focused console needed, so the choice was based on scope and integration simplicity, not on Angular's capability.
+
+### Compose integration
+
+Inside Docker Compose, the `web` service reaches the backend over the Compose network:
+
+```text
+FASTAPI_BASE_URL=http://fastapi:8000
+DJANGO_BASE_URL=http://django:8000
+```
+
+`web` receives only these two variables. It has no `env_file`, so no backend secrets reach it, and no `depends_on`, so it starts even when the backend is down and shows degraded or unavailable states.
+
+See [web/README.md](web/README.md) for the BFF route table, UI behaviour, design and technology decisions, local development, verification, the future authentication design, and frontend limitations.
 
 ## API walkthrough
 
@@ -282,7 +366,12 @@ docker compose \
 - Some valid supported ownership formulations still abstain; traversal remains weak.
 - `unsupported` versus `abstained` routing is not perfect.
 - Generated plans fail closed when they do not match deterministic validation; they are not silently repaired.
-- Local inference latency depends on available hardware.
+- Local inference latency depends on available hardware. In the web console, an Ask typically takes 1–3 minutes on CPU.
+- `/ask` has no structured entity parameter, so the entity or person selected in the web console travels only in the question text.
+- Authentication and authorization are intentionally deferred and are not implemented; there is no login and no JWT handling.
+  - The existing backend does not expose an authentication or session contract for the frontend to use.
+  - Frontend-only login or JWT handling would look like security without providing server-side authorization.
+  - Authentication was therefore kept out of the frontend exercise and belongs to production hardening. [web/README.md](web/README.md) describes the intended design.
 
 ## Actual hours
 
@@ -302,4 +391,16 @@ Total actual development time: **43 hours**.
 | 29 August 2026 | — | 3 | Final ownership-query validation, regression testing, evaluation review, and final documentation consistency work |
 | **Total** |  | **43 hours** |  |
 
-The recorded time covers the full development history represented in this repository, including implementation, debugging, testing, evaluation, verification, cleanup, and documentation.
+The 43 hours cover the original backend assessment work in this repository, including implementation, debugging, testing, evaluation, verification, cleanup, and documentation. The frontend follow-up is recorded separately below.
+
+### Frontend follow-up (`web/`)
+
+Total focused implementation time: approximately **7 hours**.
+
+| Date | Time | Hours | Work completed |
+| --- | --- | ---: | --- |
+| 22 September 2026 | 19:00–22:00 | 3 | Reviewed the assignment requirements and the existing backend architecture and API behaviour. Planned the frontend architecture, the analyst user journey, and FastAPI/Django integration through a BFF without backend changes. Explored the UI/UX direction in Figma |
+| 23 September 2026 | 11:00–15:00 | 4 | Refined the UI/UX design in Figma. Implemented the frontend in Next.js, TypeScript and Tailwind CSS: Entity Search, the Ownership workspace and Ask Watheeq, connected to the live FastAPI and Django services through the Next.js BFF. Implemented the evidence, citation, provenance, conflict and audit views. Tested current and historical ownership and live Ask queries, and refined the example questions. Improved usability, typography, responsiveness, accessibility, and error, empty and loading states. Ran tests, lint, typecheck, the production build and live integration checks |
+| **Total** |  | **7 hours** |  |
+
+Figma was used for UI/UX design and direction; the frontend implementation was written separately.
